@@ -13,6 +13,12 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { MetricsInterceptor } from './metrics/metrics.interceptor';
 import { MetricsService } from './metrics/metrics.service';
+import { JwtService } from '@nestjs/jwt';
+import { ExpressAdapter } from '@bull-board/express';
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import type { Request, Response, NextFunction } from 'express';
+import { BatchQueueService } from './batch/batch.queue.service';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -86,6 +92,44 @@ async function bootstrap() {
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
+
+  const batchQueueService = app.get(BatchQueueService);
+  const jwtService = app.get(JwtService);
+  const serverAdapter = new ExpressAdapter();
+  serverAdapter.setBasePath('/v1/admin/bull-board');
+  createBullBoard({
+    queues: [
+      new BullMQAdapter(batchQueueService.queue),
+      new BullMQAdapter(batchQueueService.dlq),
+    ],
+    serverAdapter,
+  });
+
+  const adminAuthMiddleware = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    const authorization = req.headers.authorization;
+    if (!authorization?.startsWith('Bearer ')) {
+      return res.status(401).send('Unauthorized');
+    }
+
+    const token = authorization.slice(7);
+    try {
+      const payload = jwtService.verify(token, {
+        secret: app.get(ConfigService).get<string>('jwt.secret'),
+      }) as { role?: string };
+      if (payload.role !== 'admin') {
+        return res.status(403).send('Forbidden');
+      }
+      return next();
+    } catch (error) {
+      return res.status(401).send('Unauthorized');
+    }
+  };
+
+  app.use('/v1/admin/bull-board', adminAuthMiddleware, serverAdapter.getRouter());
 
   // Export OpenAPI spec for static hosting
   if (process.env.EXPORT_OPENAPI === 'true' || process.argv.includes('--export-openapi')) {

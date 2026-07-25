@@ -78,4 +78,9 @@ export default () => ({
     node: process.env.ELASTICSEARCH_NODE || 'http://localhost:9200',
     apiKey: process.env.ELASTICSEARCH_API_KEY || '',
   },
+  batch: {
+    maxRetries: parseInt(process.env.BATCH_JOB_MAX_RETRIES || '3', 10),
+    alertSlackWebhookUrl: process.env.BATCH_ALERT_SLACK_WEBHOOK_URL || '',
+    alertPagerDutyRoutingKey: process.env.BATCH_ALERT_PAGERDUTY_ROUTING_KEY || '',
+  },
 });

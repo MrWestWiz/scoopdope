@@ -14,20 +14,15 @@ export class BatchService {
   ) {}
 
   async createUserBatch(payload: Record<string, any>[], createdById: string): Promise<BatchJob> {
-    const job = await this.jobRepo.save(
+    return this.jobRepo.save(
       this.jobRepo.create({ type: 'users', payload, totalItems: payload.length, createdById }),
     );
-    // Process asynchronously
-    setImmediate(() => this.processUserBatch(job.id));
-    return job;
   }
 
   async createCourseBatch(payload: Record<string, any>[], createdById: string): Promise<BatchJob> {
-    const job = await this.jobRepo.save(
+    return this.jobRepo.save(
       this.jobRepo.create({ type: 'courses', payload, totalItems: payload.length, createdById }),
     );
-    setImmediate(() => this.processCourseBatch(job.id));
-    return job;
   }
 
   async getJobStatus(jobId: string): Promise<BatchJob> {
@@ -41,7 +36,14 @@ export class BatchService {
     return this.jobRepo.find({ where, order: { createdAt: 'DESC' }, take: 100 });
   }
 
-  private async processUserBatch(jobId: string): Promise<void> {
+  async markJobFailed(jobId: string, failedReason: string): Promise<void> {
+    await this.jobRepo.update(jobId, {
+      status: 'failed',
+      errors: [{ error: failedReason }],
+    });
+  }
+
+  async processUserBatch(jobId: string): Promise<void> {
     const job = await this.jobRepo.findOne({ where: { id: jobId } });
     if (!job) return;
 
@@ -84,7 +86,7 @@ export class BatchService {
     });
   }
 
-  private async processCourseBatch(jobId: string): Promise<void> {
+  async processCourseBatch(jobId: string): Promise<void> {
     const job = await this.jobRepo.findOne({ where: { id: jobId } });
     if (!job) return;
 
