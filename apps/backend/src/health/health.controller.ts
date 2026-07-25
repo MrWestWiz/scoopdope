@@ -8,9 +8,11 @@ import {
   HttpHealthIndicator,
   HealthIndicatorResult,
 } from '@nestjs/terminus';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import { DataSource } from 'typeorm';
 import { Logger } from 'winston';
 
 @ApiTags('Health')
@@ -22,6 +24,7 @@ export class HealthController {
     private memory: MemoryHealthIndicator,
     private http: HttpHealthIndicator,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger
   ) {}
 
@@ -104,8 +107,8 @@ export class HealthController {
     this.logger.debug('Performing health check', { context: 'HealthController' });
 
     const result = await this.health.check([
-      // Database connectivity check
-      () => this.db.pingCheck('database'),
+      // Database writeability check
+      () => this.checkDatabase(),
 
       // Memory usage checks
       () => this.memory.checkHeap('memory_heap', 150 * 1024 * 1024), // 150MB heap limit
@@ -125,6 +128,48 @@ export class HealthController {
     });
 
     return result;
+  }
+
+  /**
+   * Confirm the database can accept writes by inserting into a health-check table and rolling back.
+   */
+  private async checkDatabase(): Promise<HealthIndicatorResult> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    let transactionStarted = false;
+
+    try {
+      await queryRunner.connect();
+      await queryRunner.query('BEGIN');
+      transactionStarted = true;
+      await queryRunner.query('INSERT INTO health_checks (ts) VALUES (now())');
+      await queryRunner.query('ROLLBACK');
+
+      return {
+        database: {
+          status: 'up',
+          message: 'Database is writable',
+        },
+      };
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          await queryRunner.query('ROLLBACK');
+        } catch (rollbackError) {
+          this.logger.warn('Database health check rollback failed', {
+            context: 'HealthController',
+            error: rollbackError.message,
+          });
+        }
+      }
+
+      this.logger.warn('Database health check failed', {
+        context: 'HealthController',
+        error: error.message,
+      });
+      throw new Error(`Database health check failed: ${error.message}`);
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   /**
