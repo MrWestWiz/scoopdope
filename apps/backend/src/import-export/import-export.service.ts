@@ -163,6 +163,10 @@ export class ImportExportService {
     const xml = manifestEntry.getData().toString('utf-8');
     const manifest = await parseStringPromise(xml, { explicitArray: false });
 
+    // Validate SCORM schema version
+    const root = manifest['manifest'] as Record<string, unknown>;
+    this.validateScormVersion(root);
+
     const courseData = this.parseScormManifest(manifest, zip);
     this.validateJsonPayload(courseData);
     const courseId = await this.persistCourse(courseData.course, instructorId);
@@ -286,6 +290,34 @@ export class ImportExportService {
         if (lesson.content === undefined) throw new BadRequestException('Each lesson must have content');
       }
     }
+  }
+
+  private validateScormVersion(manifest: Record<string, unknown>): void {
+    // Check for schemaversion attribute in manifest or metadata
+    const schemaVersion = (manifest['$'] as Record<string, string>)?.['schemaversion'] as string | undefined;
+    const metadata = manifest['metadata'] as Record<string, unknown> | undefined;
+    const metadataSchemaVersion = (metadata?.['schemaversion'] as string) ?? 
+                                 (metadata?.['schema'] as string) ?? 
+                                 (metadata?.['schemaversionversion'] as string);
+
+    const version = schemaVersion || metadataSchemaVersion;
+
+    if (!version) {
+      this.logger.warn('SCORM package does not specify schemaversion; defaulting to SCORM 1.2');
+      return;
+    }
+
+    // Supported versions: SCORM 1.2, 1.3 (CAM 1.3), and 2004 variants
+    const supportedVersions = ['1.2', '1.3', 'CAM 1.3', '2004', '2004 2nd Edition', '2004 3rd Edition', '2004 4th Edition'];
+    const isSupported = supportedVersions.some((v) => version.includes(v));
+
+    if (!isSupported) {
+      throw new BadRequestException(
+        `Unsupported SCORM version: "${version}". Supported versions: ${supportedVersions.join(', ')}`
+      );
+    }
+
+    this.logger.log(`SCORM version validated: ${version}`);
   }
 
   private parseScormManifest(manifest: Record<string, unknown>, zip: AdmZip): CourseJsonExport {

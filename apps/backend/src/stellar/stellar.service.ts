@@ -95,8 +95,16 @@ export class StellarService {
     courseId: string,
     metadata?: { courseName: string; grade: string; skills: string[] }
   ): Promise<string> {
+    const issuerKeypair = Keypair.fromSecret(
+      this.configService.get<string>('stellar.secretKey') ?? ''
+    );
+
     try {
-      await this.retryWithBackoff(() => this.recordProgressOnChain(recipientPublicKey, courseId));
+      await this.retryWithBackoff(
+        () => this.recordProgressOnChain(recipientPublicKey, courseId),
+        1,
+        { issuerKeypair, isHorizon: false }
+      );
       this.logger.log(`Progress recorded on Soroban for ${courseId}`);
     } catch (error: any) {
       this.logger.error(
@@ -107,8 +115,10 @@ export class StellarService {
 
     if (metadata && this.credentialMetadataContractId) {
       try {
-        await this.retryWithBackoff(() =>
-          this.storeCredentialMetadata(recipientPublicKey, metadata)
+        await this.retryWithBackoff(
+          () => this.storeCredentialMetadata(recipientPublicKey, metadata),
+          1,
+          { issuerKeypair, isHorizon: false }
         );
         this.logger.log(`Metadata stored on-chain for ${metadata.courseName}`);
       } catch (error: any) {
@@ -116,7 +126,11 @@ export class StellarService {
       }
     }
 
-    return this.mintCredentialViaHorizon(recipientPublicKey, courseId);
+    return this.retryWithBackoff(
+      () => this.mintCredentialViaHorizon(recipientPublicKey, courseId),
+      1,
+      { issuerKeypair, isHorizon: true }
+    );
   }
 
   async storeCredentialMetadata(
@@ -142,12 +156,18 @@ export class StellarService {
     courseId: string,
     _progressPct: number
   ): Promise<string> {
-    return this.retryWithBackoff(() =>
-      this.invokeContract(this.analyticsContractId ?? this.contractId, 'record_progress', [
-        new Address(studentPublicKey).toScVal(),
-        nativeToScVal(courseId, { type: 'symbol' }),
-        nativeToScVal(_progressPct, { type: 'i32' }),
-      ])
+    const issuerKeypair = Keypair.fromSecret(
+      this.configService.get<string>('stellar.secretKey') ?? ''
+    );
+    return this.retryWithBackoff(
+      () =>
+        this.invokeContract(this.analyticsContractId ?? this.contractId, 'record_progress', [
+          new Address(studentPublicKey).toScVal(),
+          nativeToScVal(courseId, { type: 'symbol' }),
+          nativeToScVal(_progressPct, { type: 'i32' }),
+        ]),
+      1,
+      { issuerKeypair, isHorizon: false }
     );
   }
 
@@ -198,11 +218,17 @@ export class StellarService {
     if (!this.tokenContractId) {
       throw new Error('TOKEN_CONTRACT_ID not configured');
     }
-    return this.retryWithBackoff(() =>
-      this.invokeContract(this.tokenContractId, 'mint_reward', [
-        new Address(recipientPublicKey).toScVal(),
-        nativeToScVal(amount, { type: 'i128' }),
-      ])
+    const issuerKeypair = Keypair.fromSecret(
+      this.configService.get<string>('stellar.secretKey') ?? ''
+    );
+    return this.retryWithBackoff(
+      () =>
+        this.invokeContract(this.tokenContractId, 'mint_reward', [
+          new Address(recipientPublicKey).toScVal(),
+          nativeToScVal(amount, { type: 'i128' }),
+        ]),
+      1,
+      { issuerKeypair, isHorizon: false }
     );
   }
 
@@ -297,15 +323,53 @@ export class StellarService {
     return result.hash;
   }
 
-  private async retryWithBackoff<T>(fn: () => Promise<T>, attempt = 1): Promise<T> {
+  private async retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    attempt = 1,
+    context?: { issuerKeypair?: Keypair; isHorizon?: boolean }
+  ): Promise<T> {
     try {
       return await fn();
-    } catch (error) {
+    } catch (error: any) {
+      // Special handling for tx_bad_seq: reload sequence and retry
+      if (
+        error?.response?.status === 400 &&
+        error?.response?.data?.extras?.result_code === 'tx_bad_seq'
+      ) {
+        if (attempt >= MAX_RETRIES) throw error;
+        this.logger.warn(
+          `tx_bad_seq detected on attempt ${attempt}, reloading sequence and retrying...`
+        );
+
+        try {
+          if (context?.issuerKeypair) {
+            // Reload account to get fresh sequence number
+            if (context.isHorizon) {
+              const account = await this.server.loadAccount(context.issuerKeypair.publicKey());
+              this.logger.debug(`Reloaded Horizon account sequence: ${account.sequenceNumber()}`);
+            } else {
+              const account = await this.sorobanServer.getAccount(
+                context.issuerKeypair.publicKey()
+              );
+              this.logger.debug(`Reloaded Soroban account sequence: ${account.sequenceNumber}`);
+            }
+          }
+          // Retry with fresh sequence number
+          const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+          await new Promise((r) => setTimeout(r, delay));
+          return this.retryWithBackoff(fn, attempt + 1, context);
+        } catch (reloadError: any) {
+          this.logger.error(`Failed to reload sequence: ${reloadError.message}`);
+          throw error;
+        }
+      }
+
+      // Standard backoff retry for other errors
       if (attempt >= MAX_RETRIES) throw error;
       const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
-      this.logger.warn(`Attempt ${attempt} failed, retrying in ${delay}ms`);
+      this.logger.warn(`Attempt ${attempt} failed, retrying in ${delay}ms: ${error?.message}`);
       await new Promise((r) => setTimeout(r, delay));
-      return this.retryWithBackoff(fn, attempt + 1);
+      return this.retryWithBackoff(fn, attempt + 1, context);
     }
   }
 }
