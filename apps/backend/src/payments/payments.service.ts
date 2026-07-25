@@ -71,9 +71,15 @@ export class PaymentsService {
     if (!course) throw new NotFoundException('Course not found');
 
     const priceUsd = course.priceUsd ?? 0;
-    const converted = priceUsd > 0 ? await this.currencyConversion.convert(priceUsd, currency) : 0;
+    const converted = priceUsd > 0 ? await this.currencyConversion.convertWithMetadata(priceUsd, currency) : { amount: 0 };
 
-    return { courseId, priceUsd, currency, price: converted };
+    return {
+      courseId,
+      priceUsd,
+      currency,
+      price: converted.amount,
+      currencyNote: converted.currencyNote,
+    };
   }
 
   async handleWebhook(signature: string, payload: Buffer) {
