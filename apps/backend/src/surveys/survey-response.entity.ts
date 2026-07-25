@@ -31,6 +31,9 @@ export class SurveyResponse {
   @Column('jsonb')
   answers: Record<string, string | number>;
 
+  @Column({ default: false })
+  isAnonymous: boolean;
+
   @CreateDateColumn()
   submittedAt: Date;
 }

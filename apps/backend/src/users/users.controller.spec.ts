@@ -6,11 +6,14 @@ describe('UsersController', () => {
     findById: jest.fn(),
     update: jest.fn(),
   };
+  const mockAuditService = {
+    log: jest.fn(),
+  };
   let controller: UsersController;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    controller = new UsersController(mockService as any);
+    controller = new UsersController(mockService as any, mockService as any, mockAuditService as any);
   });
 
   it('findOne should return a user', async () => {

@@ -34,6 +34,37 @@ export interface HealthStatus {
   stellar: 'ok' | 'degraded' | 'down';
 }
 
+export interface GrowthPoint {
+  month: string;
+  count: number;
+}
+
+export interface RevenuePoint {
+  month: string;
+  amount: number;
+}
+
+export interface TopCourse {
+  courseId: string;
+  title: string;
+  enrollments: number;
+  completions: number;
+  completionRate: number;
+}
+
+export interface PlatformAnalytics {
+  totalUsers: number;
+  totalEnrollments: number;
+  totalCompletions: number;
+  totalRevenue: number;
+  completionRate: number;
+  userGrowth: GrowthPoint[];
+  enrollmentGrowth: GrowthPoint[];
+  completionGrowth: GrowthPoint[];
+  revenueGrowth: RevenuePoint[];
+  topCourses: TopCourse[];
+}
+
 export const adminApi = {
   getStats: () => api.get<PlatformStats>('/admin/stats').then((r) => r.data),
   getActivity: () => api.get<ActivityEvent[]>('/admin/activity').then((r) => r.data),
@@ -47,4 +78,6 @@ export const adminApi = {
   rejectCourse: (courseId: string, reason: string) =>
     api.post(`/admin/courses/${courseId}/reject`, { reason }).then((r) => r.data),
   getHealth: () => api.get<HealthStatus>('/health').then((r) => r.data),
+  getPlatformAnalytics: () =>
+    api.get<PlatformAnalytics>('/v1/analytics/platform').then((r) => r.data),
 };

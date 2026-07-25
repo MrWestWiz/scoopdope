@@ -4,9 +4,11 @@ import {
   Column,
   CreateDateColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from 'typeorm';
 import { CourseModule } from './course-module.entity';
+import { Assignment } from '../assignments/assignment.entity';
 
 @Entity('lessons')
 export class Lesson {
@@ -29,11 +31,23 @@ export class Lesson {
   @Column({ nullable: true })
   videoUrl: string;
 
+  @Column({ type: 'jsonb', nullable: true })
+  transcript: any;
+
+  @Column({ type: 'text', nullable: true })
+  transcriptSrt: string;
+
+  @Column({ nullable: true })
+  transcriptionJobName: string;
+
   @Column({ default: 0 })
   order: number;
 
   @Column({ default: 0 })
   durationMinutes: number;
+
+  @OneToMany(() => Assignment, (assignment) => assignment.lesson)
+  assignments: Assignment[];
 
   @CreateDateColumn()
   createdAt: Date;

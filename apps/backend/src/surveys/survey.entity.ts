@@ -38,6 +38,9 @@ export class Survey {
   @Column({ default: true })
   isActive: boolean;
 
+  @Column({ default: false })
+  allowAnonymous: boolean;
+
   @OneToMany(() => SurveyQuestion, (q) => q.survey, { cascade: true })
   questions: SurveyQuestion[];
 

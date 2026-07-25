@@ -27,6 +27,12 @@ export class ModerationItem {
   @Column({ type: 'text', nullable: true })
   flagReason: string | null;
 
+  @Column({ default: 1 })
+  flagCount: number;
+
+  @Column({ default: false })
+  isHidden: boolean;
+
   @Column({ type: 'float', nullable: true })
   toxicityScore: number | null;
 

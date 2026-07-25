@@ -31,6 +31,9 @@ export class CourseModule {
   @Column({ default: 0 })
   order: number;
 
+  @Column({ type: 'timestamp', nullable: true })
+  releaseDate: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

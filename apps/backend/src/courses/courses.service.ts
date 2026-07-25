@@ -7,16 +7,19 @@ import { Inject } from '@nestjs/common';
 import { Course, CourseStatus } from './course.entity';
 import { CourseQueryDto } from './dto/course-query.dto';
 import { SearchService } from '../search/search.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 @Injectable()
 export class CoursesService {
   private readonly CACHE_KEY = 'courses:all';
-  private readonly CACHE_TTL = 60;
+  /** 5-minute TTL in milliseconds */
+  private readonly CACHE_TTL = 300_000;
 
   constructor(
     @InjectRepository(Course) private repo: Repository<Course>,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-    private readonly searchService: SearchService
+    private readonly searchService: SearchService,
+    private readonly metricsService: MetricsService
   ) {}
 
   async findAll(query: CourseQueryDto = {}) {
@@ -29,7 +32,11 @@ export class CoursesService {
 
     if (cacheKey) {
       const cached = await this.cacheManager.get(cacheKey);
-      if (cached) return cached;
+      if (cached) {
+        this.metricsService.incrementCacheHit('courses');
+        return cached;
+      }
+      this.metricsService.incrementCacheMiss('courses');
     }
 
     const qb = this.repo
@@ -75,14 +82,17 @@ export class CoursesService {
     const result = { data, total, page, limit };
 
     if (cacheKey) {
-      await this.cacheManager.set(cacheKey, result, this.CACHE_TTL * 1000);
+      await this.cacheManager.set(cacheKey, result, this.CACHE_TTL);
     }
 
     return result;
   }
 
   async findOne(id: string): Promise<Course> {
-    const course = await this.repo.findOne({ where: { id, isDeleted: false } });
+    const course = await this.repo.findOne({
+      where: { id, isDeleted: false },
+      relations: ['prerequisites', 'prerequisites.prerequisite'],
+    });
     if (!course) throw new NotFoundException('Course not found');
     return course;
   }

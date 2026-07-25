@@ -11,12 +11,13 @@ function CompareView({ courses, onClose }: { courses: ComparableCourse[]; onClos
     { label: 'Duration', key: 'durationHours', format: (v) => (v != null ? `${v}h` : '—') },
     { label: 'Price', key: 'price', format: (v) => (v == null ? '—' : v === 0 ? 'Free' : `$${v}`) },
     { label: 'Rating', key: 'rating', format: (v) => (v != null ? `★ ${v}` : '—') },
+    { label: 'Modules', key: 'moduleCount', format: (v) => (v != null ? String(v) : '—') },
+    { label: 'Prerequisites', key: 'prerequisites', format: (v) => (Array.isArray(v) && v.length ? (v as string[]).join(', ') : 'None') },
     { label: 'Enrollments', key: 'enrollments', format: (v) => (v != null ? String(v) : '—') },
   ];
 
-  // Highlight cells that differ across courses
   const differs = (key: keyof ComparableCourse) => {
-    const vals = courses.map((c) => c[key]);
+    const vals = courses.map((c) => JSON.stringify(c[key]));
     return new Set(vals).size > 1;
   };
 
@@ -86,7 +87,7 @@ export function CompareBar() {
     <>
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 shadow-lg px-6 py-3 flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Compare ({selected.length}/4):
+          Compare ({selected.length}/3):
         </span>
         {selected.map((c) => (
           <span key={c.id} className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs px-2 py-1 rounded-full">

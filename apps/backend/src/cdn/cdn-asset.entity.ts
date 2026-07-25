@@ -4,10 +4,13 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  ManyToOne,
-  JoinColumn,
 } from 'typeorm';
-import { Lesson } from '../courses/lesson.entity';
+
+export enum AssetType {
+  VIDEO = 'video',
+  IMAGE = 'image',
+  PDF = 'pdf',
+}
 
 export enum ContentType {
   VIDEO = 'video',
@@ -19,42 +22,53 @@ export enum ContentType {
 @Entity('cdn_assets')
 export class CdnAsset {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
+
+  @Column({ nullable: true })
+  lessonId!: string;
 
   @Column()
-  lessonId: string;
-
-  @ManyToOne(() => Lesson, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'lessonId' })
-  lesson: Lesson;
+  fileName!: string;
 
   @Column()
-  fileName: string;
+  originalName!: string;
 
   @Column()
-  cdnUrl: string;
+  cdnUrl!: string;
 
   @Column({ type: 'enum', enum: ContentType })
-  contentType: ContentType;
+  contentType!: ContentType;
+
+  @Column({ type: 'enum', enum: AssetType, nullable: true })
+  assetType!: AssetType | null;
 
   @Column({ type: 'bigint' })
-  fileSize: number;
+  fileSize!: number;
 
   @Column({ nullable: true })
-  duration: number;
+  mimeType!: string | null;
+
+  @Column({ nullable: true })
+  duration!: number;
 
   @Column({ default: false })
-  isTranscoded: boolean;
+  isTranscoded!: boolean;
+
+  @Column({ default: true })
+  isPrivate!: boolean;
 
   @Column('simple-array', { nullable: true })
-  availableBitrates: string[];
+  availableBitrates!: string[];
 
   @Column({ nullable: true })
-  thumbnailUrl: string;
+  thumbnailUrl!: string;
+
+  @Column({ nullable: true })
+  uploadedByUserId!: string | null;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 }

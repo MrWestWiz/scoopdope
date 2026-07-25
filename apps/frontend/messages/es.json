@@ -71,6 +71,35 @@
     "empty": "Aún no hay favoritos.",
     "browseCourses": "Ver cursos →"
   },
+  "gdpr": {
+    "title": "Privacidad y Datos",
+    "description": "Gestiona tus datos personales en cumplimiento del RGPD. Puedes exportar todos los datos que tenemos sobre ti o solicitar la eliminación de tu cuenta.",
+    "exportData": "Exportar mis Datos",
+    "exporting": "Exportando…",
+    "exported": "Exportado ✓",
+    "exportError": "Error al exportar datos. Inténtalo de nuevo.",
+    "deleteAccount": "Eliminar Cuenta",
+    "confirmTitle": "Eliminar tu Cuenta",
+    "confirmDescription": "Esta acción es irreversible. Todos tus datos personales serán anonimizados y tu cuenta será desactivada permanentemente. Perderás el acceso a tus cursos, credenciales y cartera.",
+    "typeConfirm": "Escribe {phrase} para confirmar",
+    "confirmDelete": "Eliminar Permanentemente",
+    "deleting": "Eliminando…",
+    "deleteSuccess": "Tu cuenta ha sido programada para eliminación. Serás redirigido en breve.",
+    "deleteError": "Error al eliminar la cuenta. Inténtalo de nuevo.",
+    "cancel": "Cancelar",
+    "redirecting": "Redirigiendo a la página principal…"
+  },
+  "video": {
+    "loading": "Cargando video…",
+    "completed": "Lección completada"
+  },
+  "vesting": {
+    "title": "Programa de adquisición",
+    "total": "Total: {amount}",
+    "cliffLedger": "Ledger cliff: {ledger}",
+    "endLedger": "Ledger final: {ledger}",
+    "locked": "Bloqueado"
+  },
   "shortcuts": {
     "title": "Atajos de teclado",
     "navigation": "Navegación",

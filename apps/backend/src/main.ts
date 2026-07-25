@@ -1,3 +1,4 @@
+import './tracing';
 import './instrument';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
@@ -13,16 +14,61 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { MetricsInterceptor } from './metrics/metrics.interceptor';
 import { MetricsService } from './metrics/metrics.service';
-import { JwtService } from '@nestjs/jwt';
-import { ExpressAdapter } from '@bull-board/express';
-import { createBullBoard } from '@bull-board/api';
-import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
-import type { Request, Response, NextFunction } from 'express';
-import { BatchQueueService } from './batch/batch.queue.service';
+import { AppDataSource } from './data-source';
+
+async function runMigrationCommand(command: string) {
+  const logger = new Logger('MigrationCommand');
+
+  try {
+    await AppDataSource.initialize();
+    logger.log('DataSource initialized');
+
+    switch (command) {
+      case 'migration:run': {
+        const migrations = await AppDataSource.runMigrations();
+        if (migrations.length === 0) {
+          logger.log('No pending migrations.');
+        } else {
+          logger.log(`Executed ${migrations.length} migration(s):`);
+          migrations.forEach((m) => logger.log(`  ${m.name}`));
+        }
+        break;
+      }
+      case 'migration:revert': {
+        const reverted = await AppDataSource.undoLastMigration();
+        if (reverted) {
+          logger.log(`Reverted: ${reverted.name}`);
+        } else {
+          logger.log('Nothing to revert.');
+        }
+        break;
+      }
+      default:
+        logger.error(`Unknown migration command: ${command}`);
+        process.exit(1);
+    }
+
+    await AppDataSource.destroy();
+    process.exit(0);
+  } catch (error) {
+    logger.error(`Migration command "${command}" failed: ${error}`);
+    process.exit(1);
+  }
+}
 
 async function bootstrap() {
+  const migrationCommand = process.argv
+    .slice(2)
+    .find((a) => a.startsWith('migration:'));
+
+  if (migrationCommand) {
+    await runMigrationCommand(migrationCommand);
+    return;
+  }
+
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.enableShutdownHooks();
   const configService = app.get(ConfigService);
 
   const port = configService.get<number>('port');
@@ -30,7 +76,7 @@ async function bootstrap() {
 
   app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
 
-  app.setGlobalPrefix('v1');
+  app.setGlobalPrefix('v1', { exclude: ['health', 'health/live', 'health/ready', 'health/startup', 'health/environment', 'health/version'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }), new SanitizationPipe());
   app.useGlobalFilters(new HttpExceptionFilter(), new ValidationExceptionFilter());
   app.useGlobalInterceptors(
@@ -50,10 +96,29 @@ async function bootstrap() {
     maxAge: corsPreflight,
   });
 
+  const v1Info = getVersionInfo('v1');
+
   const config = new DocumentBuilder()
     .setTitle('scoopdope API')
     .setDescription(
       'Blockchain education platform API powered by Stellar\n\n' +
+        '## API Versioning\n\n' +
+        'This API uses **URL-based versioning**. All requests must include the version prefix.\n\n' +
+        `Current version: **${LATEST_API_VERSION}** | Supported: ${API_VERSIONS.join(', ')}\n\n` +
+        '### Version Headers\n\n' +
+        '| Header | Description |\n' +
+        '|--------|-------------|\n' +
+        `| \`${API_VERSION_HEADER}\` | Request a specific version (e.g., \`v1\`) |\n` +
+        '| `X-API-Version` | Response header indicating the served version |\n' +
+        '| `X-API-Deprecated` | Response header warning about deprecation |\n' +
+        '| `X-API-Sunset` | Response header with sunset date for deprecated versions |\n\n' +
+        '### Versioning Policy\n\n' +
+        '- Backward-compatible changes (new fields, new endpoints) are additive within a version\n' +
+        '- Breaking changes trigger a new version (e.g., v2)\n' +
+        '- Deprecated versions receive a **90-day** sunset window before removal\n' +
+        '- Clients should monitor `X-API-Version` and `X-API-Deprecated` response headers\n\n' +
+        '📖 **Full versioning policy, deprecation timeline, and migration guide:** ' +
+        '[docs/api-versioning.md](https://github.com/augustina-jpg/scoopdope/blob/main/docs/api-versioning.md)\n\n' +
         '## Authentication\n\n' +
         'This API uses JWT Bearer tokens for authentication.\n\n' +
         '### Getting Started\n\n' +
@@ -87,51 +152,13 @@ async function bootstrap() {
       'JWT-auth'
     )
     .addApiKey({ type: 'apiKey', in: 'header', name: 'X-API-KEY' }, 'X-API-KEY')
-    .addServer('/v1', 'API v1')
+    .addServer(`/${LATEST_API_VERSION}`, `API ${LATEST_API_VERSION} (latest)`)
+    .addServer(`/${DEFAULT_API_VERSION}`, `API ${DEFAULT_API_VERSION} (default)`)
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  const batchQueueService = app.get(BatchQueueService);
-  const jwtService = app.get(JwtService);
-  const serverAdapter = new ExpressAdapter();
-  serverAdapter.setBasePath('/v1/admin/bull-board');
-  createBullBoard({
-    queues: [
-      new BullMQAdapter(batchQueueService.queue),
-      new BullMQAdapter(batchQueueService.dlq),
-    ],
-    serverAdapter,
-  });
-
-  const adminAuthMiddleware = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ) => {
-    const authorization = req.headers.authorization;
-    if (!authorization?.startsWith('Bearer ')) {
-      return res.status(401).send('Unauthorized');
-    }
-
-    const token = authorization.slice(7);
-    try {
-      const payload = jwtService.verify(token, {
-        secret: app.get(ConfigService).get<string>('jwt.secret'),
-      }) as { role?: string };
-      if (payload.role !== 'admin') {
-        return res.status(403).send('Forbidden');
-      }
-      return next();
-    } catch (error) {
-      return res.status(401).send('Unauthorized');
-    }
-  };
-
-  app.use('/v1/admin/bull-board', adminAuthMiddleware, serverAdapter.getRouter());
-
-  // Export OpenAPI spec for static hosting
   if (process.env.EXPORT_OPENAPI === 'true' || process.argv.includes('--export-openapi')) {
     const outputPath = join(__dirname, '..', 'openapi.json');
     writeFileSync(outputPath, JSON.stringify(document, null, 2));

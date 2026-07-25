@@ -10,9 +10,11 @@ export interface ComparableCourse {
   rating?: number;
   description?: string;
   enrollments?: number;
+  moduleCount?: number;
+  prerequisites?: string[];
 }
 
-const MAX_COMPARE = 4;
+const MAX_COMPARE = 3;
 
 interface CompareState {
   selected: ComparableCourse[];

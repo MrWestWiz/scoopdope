@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 
 export type KycStatus = 'none' | 'pending' | 'approved' | 'rejected';
+export type KycDocumentType = 'id_card' | 'passport' | 'drivers_license';
 
 @Entity('kyc_customers')
 export class KycCustomer {
@@ -20,7 +21,23 @@ export class KycCustomer {
   status: KycStatus;
 
   @Column({ nullable: true })
-  providerId: string; // external ID from KYC provider
+  providerId: string;
+
+  /** Encrypted additional identity field data from SEP-0012 submissions */
+  @Column({ nullable: true, type: 'text' })
+  documentData: string | null;
+
+  /** Type of document uploaded for verification */
+  @Column({ nullable: true, type: 'varchar', length: 30 })
+  documentType: KycDocumentType | null;
+
+  /** URL/path to the uploaded identity document (ID, passport, license) */
+  @Column({ nullable: true, type: 'text' })
+  documentUrl: string | null;
+
+  /** URL/path to the uploaded selfie photo */
+  @Column({ nullable: true, type: 'text' })
+  selfieUrl: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

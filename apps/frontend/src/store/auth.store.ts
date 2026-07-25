@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import * as Sentry from '@sentry/nextjs';
 
 export interface AuthUser {
   id: string;
@@ -23,9 +24,28 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       token: null,
-      login: (token, user) => set({ token, user }),
-      logout: () => set({ token: null, user: null }),
-      setUser: (user) => set({ user }),
+      login: (token, user) => {
+        Sentry.setUser({
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+        });
+        set({ token, user });
+      },
+      logout: () => {
+        Sentry.setUser(null);
+        set({ token: null, user: null });
+      },
+      setUser: (user) => {
+        Sentry.setUser({
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+        });
+        set({ user });
+      },
     }),
     {
       name: 'auth',

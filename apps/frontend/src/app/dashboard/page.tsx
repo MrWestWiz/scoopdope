@@ -1,15 +1,24 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { CircularProgress } from '@/components/ui/CircularProgress';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { StreakWidget } from '@/components/ui/StreakWidget';
+import { TokenBalanceWidget } from '@/components/dashboard/TokenBalanceWidget';
+import { CheckCircle2 } from 'lucide-react';
+import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
+import { useOnboardingStore } from '@/store/onboarding.store';
 
 interface UserData {
   id: string;
   username: string;
   email: string;
+  currentStreak?: number;
+  longestStreak?: number;
 }
 
 interface ProgressRecord {
@@ -30,23 +39,25 @@ interface CourseData {
   title: string;
 }
 
-function SkeletonItem({ width = 'w-full', height = 'h-6' }: { width?: string; height?: string }) {
-  return (
-    <div className={`bg-gray-200 dark:bg-gray-700 rounded ${width} ${height} animate-pulse`} />
-  );
-}
-
 export default function DashboardPage() {
   const { state } = useAuth();
   const [user, setUser] = useState<UserData | null>(
     state.user
-      ? { id: state.user.id, username: state.user.username, email: state.user.email }
+      ? {
+          id: state.user.id,
+          username: state.user.username,
+          email: state.user.email,
+          currentStreak: (state.user as any).currentStreak,
+          longestStreak: (state.user as any).longestStreak,
+        }
       : null
   );
-  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
   const [progress, setProgress] = useState<ProgressRecord[]>([]);
   const [courses, setCourses] = useState<Record<string, CourseData>>({});
   const [credentials, setCredentials] = useState<CredentialRecord[]>([]);
+  const [bundleEnrollments, setBundleEnrollments] = useState<any[]>([]);
+  const [pathEnrollments, setPathEnrollments] = useState<any[]>([]);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,7 +72,13 @@ export default function DashboardPage() {
         let currentUser = user;
         if (!currentUser) {
           const { data } = await api.get('/users/me');
-          currentUser = { id: data.id, username: data.username, email: data.email };
+          currentUser = {
+            id: data.id,
+            username: data.username,
+            email: data.email,
+            currentStreak: data.currentStreak,
+            longestStreak: data.longestStreak,
+          };
           setUser(currentUser);
         }
 
@@ -69,13 +86,17 @@ export default function DashboardPage() {
           throw new Error('User information is missing.');
         }
 
-        const [balanceRes, progressRes, credRes] = await Promise.all([
-          api.get(`/users/${currentUser.id}/token-balance`),
+        const [progressRes, credRes, bundlesRes, pathsRes, recsRes] = await Promise.all([
           api.get(`/users/${currentUser.id}/progress`),
           api.get(`/credentials/${currentUser.id}`),
+          api.get('/bundles/user/me'),
+          api.get('/learning-paths/user/me'),
+          api.get('/v1/recommendations?limit=5').catch(() => ({ data: { data: [] } })),
         ]);
 
-        setTokenBalance(Number(balanceRes.data.balance ?? 0));
+        setBundleEnrollments(bundlesRes.data ?? []);
+        setPathEnrollments(pathsRes.data ?? []);
+        setRecommendations(recsRes.data?.data ?? []);
 
         const progressRecords: ProgressRecord[] = (progressRes.data ?? []).map((p: any) => ({
           id: p.id,
@@ -139,12 +160,13 @@ export default function DashboardPage() {
 
   return (
     <ProtectedRoute>
+      <OnboardingWizard />
       <main className="max-w-5xl mx-auto p-8 space-y-8">
         <section>
           {isLoading ? (
             <div className="space-y-2">
-              <SkeletonItem width="w-48" height="h-8" />
-              <SkeletonItem width="w-64" height="h-5" />
+              <Skeleton className="w-48 h-8" />
+              <Skeleton className="w-64 h-5" />
             </div>
           ) : (
             <div>
@@ -162,20 +184,128 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <section>
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-            BST Token Balance
-          </h2>
-          <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-            {isLoading ? (
-              <SkeletonItem width="w-32" height="h-7" />
-            ) : (
-              <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-                {tokenBalance ?? 0} BST
-              </p>
-            )}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              Learning Streak
+            </h2>
+            <StreakWidget
+              currentStreak={user?.currentStreak ?? 0}
+              longestStreak={user?.longestStreak ?? 0}
+              isLoading={isLoading}
+            />
+          </div>
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              BST Token Balance
+            </h2>
+            <TokenBalanceWidget stellarPublicKey={state.user?.stellarPublicKey} />
           </div>
         </section>
+
+        {bundleEnrollments.length > 0 && (
+          <section>
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+              Active Bundles
+            </h2>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {bundleEnrollments.map((enrollment) => (
+                <div key={enrollment.id} className="p-4 rounded-lg border border-blue-100 dark:border-blue-900/30 bg-blue-50/30 dark:bg-blue-900/10">
+                  <h3 className="font-bold text-gray-900 dark:text-white">{enrollment.bundle.title}</h3>
+                  <div className="mt-2 flex items-center justify-between text-sm">
+                    <span className="text-gray-500">{enrollment.bundle.courses.length} Courses</span>
+                    {enrollment.completedAt ? (
+                      <span className="text-green-600 font-bold flex items-center">
+                        <CheckCircle2 className="w-4 h-4 mr-1" /> Completed
+                      </span>
+                    ) : (
+                      <span className="text-blue-600 font-bold">In Progress</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {pathEnrollments.length > 0 && (
+          <section>
+            <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+              Learning Paths
+            </h2>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pathEnrollments.map((enrollment: any) => {
+                const lp = enrollment.learningPath;
+                const total = lp?.courses?.length ?? 0;
+                return (
+                  <div
+                    key={enrollment.id}
+                    className="p-4 rounded-lg border border-purple-100 dark:border-purple-900/30 bg-purple-50/30 dark:bg-purple-900/10"
+                  >
+                    <h3 className="font-bold text-gray-900 dark:text-white">{lp?.title}</h3>
+                    <div className="mt-2 flex items-center justify-between text-sm">
+                      <span className="text-gray-500">{total} Courses</span>
+                      {enrollment.completedAt ? (
+                        <span className="text-green-600 font-bold flex items-center">
+                          <CheckCircle2 className="w-4 h-4 mr-1" /> Completed
+                        </span>
+                      ) : (
+                        <span className="text-purple-600 font-bold">In Progress</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {recommendations.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                Recommended for You
+              </h2>
+              <Link
+                href="/recommendations"
+                className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
+              >
+                View all →
+              </Link>
+            </div>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {recommendations.map((course: any) => (
+                <Link
+                  key={course.id}
+                  href={`/courses/${course.id}`}
+                  className="block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:shadow-md transition-shadow"
+                >
+                  <h3 className="font-semibold text-gray-900 dark:text-white">{course.title}</h3>
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span className="capitalize px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
+                      {course.level}
+                    </span>
+                    {course.skills?.slice(0, 2).map((s: string) => (
+                      <span key={s} className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                  {course.matchReasons?.length > 0 && (
+                    <p className="mt-2 text-xs text-green-600 dark:text-green-400">
+                      {course.matchReasons[0]}
+                    </p>
+                  )}
+                  {course.averageRating != null && (
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      ★ {Number(course.averageRating).toFixed(1)}
+                    </p>
+                  )}
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section>
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
@@ -185,8 +315,8 @@ export default function DashboardPage() {
             {isLoading ? (
               Array.from({ length: 3 }).map((_, idx) => (
                 <div key={idx} className="space-y-2">
-                  <SkeletonItem width="w-2/5" height="h-5" />
-                  <div className="h-3 w-full rounded bg-gray-200 dark:bg-gray-700" />
+                  <Skeleton className="w-2/5 h-5" />
+                  <Skeleton className="w-full h-3" />
                 </div>
               ))
             ) : enrolledCourses.length === 0 ? (
@@ -225,7 +355,7 @@ export default function DashboardPage() {
           <div className="mt-3 space-y-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
             {isLoading ? (
               Array.from({ length: 3 }).map((_, idx) => (
-                <SkeletonItem key={idx} width="w-full" height="h-6" />
+                <Skeleton key={idx} className="w-full h-6" />
               ))
             ) : recentCredentials.length === 0 ? (
               <p className="text-gray-500 dark:text-gray-400">

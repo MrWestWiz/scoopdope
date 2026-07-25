@@ -36,6 +36,9 @@ export class Review {
   @Column({ type: 'text', nullable: true })
   comment: string | null;
 
+  @Column({ default: false })
+  flagged: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 }

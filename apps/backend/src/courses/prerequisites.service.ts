@@ -105,4 +105,36 @@ export class PrerequisitesService {
       );
     }
   }
+
+  /** Returns prerequisites with per-course progress for the given user */
+  async getPrerequisiteStatus(courseId: string, userId: string) {
+    const prereqs = await this.prereqRepo.find({
+      where: { courseId },
+      relations: ['prerequisite'],
+    });
+
+    if (!prereqs.length) return { allSatisfied: true, prerequisites: [] };
+
+    const enrollments = await this.enrollmentRepo.find({
+      where: { userId },
+      select: ['courseId', 'completedAt'],
+    });
+
+    const enrollmentMap = new Map(enrollments.map((e) => [e.courseId, e]));
+
+    const prerequisites = prereqs.map((p) => {
+      const enrollment = enrollmentMap.get(p.prerequisiteId);
+      return {
+        courseId: p.prerequisiteId,
+        title: p.prerequisite.title,
+        completed: !!enrollment?.completedAt,
+        enrolled: !!enrollment,
+      };
+    });
+
+    return {
+      allSatisfied: prerequisites.every((p) => p.completed),
+      prerequisites,
+    };
+  }
 }

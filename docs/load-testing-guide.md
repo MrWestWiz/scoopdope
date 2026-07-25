@@ -42,17 +42,60 @@ API_URL=https://api.example.com k6 run scripts/load-tests/user-journey.js
 
 ### Test Scenarios
 
-#### 1. User Journey Test
+#### 1. Auth Load Test
+**File**: `scripts/load-tests/auth-login.js`
+
+Tests login endpoint under sustained load.
+
+**Load Profile**: 100 VUs for 30s
+
+**Thresholds**:
+- p95 < 500ms, p99 < 1000ms, error rate < 1%
+
+**Baseline (p95)**: ~180ms
+
+#### 2. Course Browsing Test
+**File**: `scripts/load-tests/courses.js`
+
+Tests course listing endpoint under high concurrency.
+
+**Load Profile**: Ramp to 500 VUs over 10s, sustain 20s
+
+**Thresholds**:
+- p95 < 500ms, p99 < 1000ms, error rate < 1%
+
+**Baseline (p95)**: ~120ms
+
+#### 3. Enrollment Test
+**File**: `scripts/load-tests/enrollment.js`
+
+Tests the full enrollment flow: register → browse → enroll.
+
+**Load Profile**: Ramp to 50 VUs over 30s, sustain 2m
+
+**Thresholds**:
+- p95 < 600ms, p99 < 1200ms
+- Enroll endpoint p95 < 800ms, error rate < 5%
+
+**Baseline (p95)**: ~350ms (enroll), ~120ms (browse)
+
+#### 4. Video Streaming Test
+**File**: `scripts/load-tests/video-streaming.js`
+
+Tests video lesson access and progress tracking.
+
+**Load Profile**: Ramp to 30 VUs over 30s, sustain 2m
+
+**Thresholds**:
+- p95 < 800ms, p99 < 1500ms
+- Video endpoint p95 < 1000ms, progress endpoint p95 < 500ms
+
+**Baseline (p95)**: ~420ms (lesson fetch), ~200ms (progress update)
+
+#### 5. User Journey Test
 **File**: `scripts/load-tests/user-journey.js`
 
-Simulates realistic user flow:
-1. Register new user
-2. Login
-3. Browse courses
-4. View course details
-5. Enroll in course
-6. View user profile
-7. Check Stellar balance
+Simulates complete user flow: register → login → browse → enroll → view lesson.
 
 **Load Profile**:
 - Ramp-up: 100 users over 2 minutes
@@ -61,37 +104,43 @@ Simulates realistic user flow:
 - Ramp-down: 0 users over 2 minutes
 
 **Thresholds**:
-- 95th percentile response time < 500ms
-- 99th percentile response time < 1000ms
-- Error rate < 5%
+- p95 < 500ms, p99 < 1000ms, error rate < 5%
 
-#### 2. High Concurrency Test
+**Baseline (p95)**: ~450ms
+
+#### 6. High Concurrency Test
 **File**: `scripts/load-tests/high-concurrency.js`
 
-Tests system with high concurrent users:
-- 1000 concurrent users for 10 minutes
-- Spike to 10000 concurrent users for 5 minutes
-
-**Workload**: Read-heavy (courses listing and details)
+Tests system with high concurrent users (read-heavy).
 
 **Thresholds**:
-- 95th percentile response time < 1000ms
-- 99th percentile response time < 2000ms
-- Error rate < 10%
+- p95 < 1000ms, p99 < 2000ms, error rate < 10%
 
-#### 3. Stress Test
+#### 7. Stress Test
 **File**: `scripts/load-tests/stress-test.js`
 
-Gradually increases load to find breaking points:
-- 100 → 200 → 500 → 1000 → 2000 → 5000 users
-- Each stage lasts 2 minutes
-
-**Workload**: Mix of read and write operations
+Gradually increases load to find breaking points (100 → 5000 users).
 
 **Thresholds**:
-- 95th percentile response time < 2000ms
-- 99th percentile response time < 5000ms
-- Error rate < 20%
+- p95 < 2000ms, p99 < 5000ms, error rate < 20%
+
+---
+
+## Performance Baselines
+
+Baselines measured against a local environment (PostgreSQL + Redis, no CDN):
+
+| Endpoint | p50 | p95 | p99 | Error Rate |
+|---|---|---|---|---|
+| `POST /v1/auth/login` | 80ms | 180ms | 350ms | <0.5% |
+| `POST /v1/auth/register` | 120ms | 280ms | 500ms | <0.5% |
+| `GET /v1/courses` | 50ms | 120ms | 250ms | <0.1% |
+| `GET /v1/courses/:id` | 40ms | 100ms | 200ms | <0.1% |
+| `POST /v1/enrollments` | 150ms | 350ms | 700ms | <1% |
+| `GET /v1/lessons/:id` | 180ms | 420ms | 800ms | <1% |
+| `POST /v1/progress` | 80ms | 200ms | 400ms | <0.5% |
+
+> Re-run baselines after infrastructure changes: `./scripts/load-tests/run-all-tests.sh`
 
 ## Performance Metrics
 

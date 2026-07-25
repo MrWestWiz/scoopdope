@@ -6,7 +6,11 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
+import { DatabaseConfigValidator } from './common/validators/database-config.validator';
 import { AuthModule } from './auth/auth.module';
+import { ApiKeysModule } from './api-keys/api-keys.module';
+import { DatabaseModule } from './database/database.module';
 import { CoursesModule } from './courses/courses.module';
 import { UsersModule } from './users/users.module';
 import { StellarModule } from './stellar/stellar.module';
@@ -36,6 +40,17 @@ import { AccessControlModule } from './access-control/access-control.module';
 import { RateLimitModule } from './rate-limit/rate-limit.module';
 import { UserRateLimitGuard } from './rate-limit/user-rate-limit.guard';
 import { AuditModule } from './audit/audit.module';
+import { RemindersModule } from './reminders/reminders.module';
+import { CertificatesModule } from './certificates/certificates.module';
+import { ApiVersionModule } from './common/versioning';
+import { PayoutsModule } from './payouts/payouts.module';
+import { InstructorApplicationsModule } from './instructor-applications/instructor-applications.module';
+import { AssignmentsModule } from './assignments/assignments.module';
+import { StreaksModule } from './streaks/streaks.module';
+import { BundlesModule } from './bundles/bundles.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { LiveSessionsModule } from './live-sessions/live-sessions.module';
+import { PaymentsModule } from './payments/payments.module';
 import * as redisStore from 'cache-manager-redis-store';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import configuration from './config/configuration';
@@ -45,6 +60,7 @@ import { validationSchema } from './config/validation.schema';
   imports: [
     SentryModule.forRoot(),
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
@@ -56,16 +72,29 @@ import { validationSchema } from './config/validation.schema';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        host: config.get<string>('database.host'),
-        port: config.get<number>('database.port'),
-        username: config.get<string>('database.username'),
-        password: config.get<string>('database.password'),
-        database: config.get<string>('database.name'),
-        autoLoadEntities: true,
-        synchronize: config.get<string>('nodeEnv') !== 'production',
-      }),
+      useFactory: (config: ConfigService) => {
+        const nodeEnv = config.get<string>('nodeEnv');
+        const synchronize = nodeEnv !== 'production' && nodeEnv !== 'staging';
+
+        // Validate that synchronize is not enabled in production/staging
+        DatabaseConfigValidator.validateSynchronizeConfig(nodeEnv, synchronize);
+
+        return {
+          type: 'postgres',
+          host: config.get<string>('database.host'),
+          port: config.get<number>('database.port'),
+          username: config.get<string>('database.username'),
+          password: config.get<string>('database.password'),
+          database: config.get<string>('database.name'),
+          autoLoadEntities: true,
+          synchronize,
+          extra: {
+            max: config.get<number>('database.poolSize') || 50,
+            idleTimeoutMillis: 30_000,
+            connectionTimeoutMillis: 5_000,
+          },
+        };
+      },
     }),
     CacheModule.registerAsync({
       isGlobal: true,
@@ -93,6 +122,8 @@ import { validationSchema } from './config/validation.schema';
       }),
     }),
     AuthModule,
+    ApiKeysModule,
+    DatabaseModule,
     CoursesModule,
     UsersModule,
     StellarModule,
@@ -104,6 +135,7 @@ import { validationSchema } from './config/validation.schema';
     RemindersModule,
     CertificatesModule,
     PayoutsModule,
+    InstructorApplicationsModule,
     HealthModule,
     MetricsModule,
     KycModule,
@@ -122,6 +154,16 @@ import { validationSchema } from './config/validation.schema';
     AccessControlModule,
     RateLimitModule,
     AuditModule,
+    DownloadsModule,
+    QaModule,
+    AnnouncementsModule,
+    AssignmentsModule,
+    StreaksModule,
+    BundlesModule,
+    SubscriptionsModule,
+    LiveSessionsModule,
+    PaymentsModule,
+    ApiVersionModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -1,125 +1,173 @@
 # Health Check Module
 
-This module provides comprehensive health checking capabilities for the scoopdope backend API, designed for load balancers, container orchestrators, and monitoring systems.
+Comprehensive health check endpoints designed for load balancers (AWS ALB, NGINX, HAProxy), container orchestrators (Docker, Kubernetes, ECS), and monitoring systems (Prometheus, Grafana, CloudWatch).
 
-## Features
+## Endpoints
 
-- ✅ **Database Connectivity**: PostgreSQL connection health
-- ✅ **Redis Connectivity**: Cache/session store health  
-- ✅ **Memory Usage**: Heap and RSS memory monitoring
-- ✅ **Stellar Horizon**: External service connectivity
-- ✅ **HTTP Status Codes**: 200 (healthy) / 503 (unhealthy)
-- ✅ **Detailed Responses**: JSON with individual check results
-- ✅ **CI/CD Integration**: Automated smoke testing
-
-## Endpoint
-
-```
-GET /health
-```
-
-## Response Format
-
-### Healthy Response (200 OK)
-```json
-{
-  "status": "ok",
-  "info": {
-    "database": { "status": "up" },
-    "memory_heap": { "status": "up" },
-    "memory_rss": { "status": "up" },
-    "redis": { "status": "up", "message": "Redis is responsive" },
-    "stellar_horizon": { "status": "up" }
-  },
-  "error": {},
-  "details": {
-    "database": { "status": "up" },
-    "memory_heap": { "status": "up" },
-    "memory_rss": { "status": "up" },
-    "redis": { "status": "up", "message": "Redis is responsive" },
-    "stellar_horizon": { "status": "up" }
-  }
-}
-```
-
-### Unhealthy Response (503 Service Unavailable)
-```json
-{
-  "status": "error",
-  "info": {
-    "memory_heap": { "status": "up" },
-    "memory_rss": { "status": "up" }
-  },
-  "error": {
-    "database": { "status": "down", "message": "Connection timeout" },
-    "redis": { "status": "down", "message": "Redis health check failed: Connection refused" }
-  },
-  "details": {
-    "database": { "status": "down", "message": "Connection timeout" },
-    "memory_heap": { "status": "up" },
-    "memory_rss": { "status": "up" },
-    "redis": { "status": "down", "message": "Redis health check failed: Connection refused" },
-    "stellar_horizon": { "status": "up" }
-  }
-}
-```
+| Endpoint | Type | Description | Used By |
+|---|---|---|---|
+| `GET /health` | Full | All dependencies (DB, Redis, Stellar, memory, disk, ES) | Monitoring, smoke tests |
+| `GET /health/live` | Liveness | Process alive, not shutting down (no deps) | Docker HEALTHCHECK, K8s livenessProbe, ECS |
+| `GET /health/ready` | Readiness | Critical deps (DB, Redis) ready for traffic | ALB target group, K8s readinessProbe |
+| `GET /health/startup` | Startup | Application initialized successfully | K8s startupProbe |
+| `GET /health/environment` | Info | Blue/green deployment environment | CI/CD, blue-green deployment |
+| `GET /health/version` | Info | App version, uptime, system info | Monitoring dashboards |
 
 ## Health Checks
 
-### 1. Database (PostgreSQL)
-- **Check**: Connection ping to PostgreSQL database
-- **Failure**: Database unreachable or connection timeout
-- **Configuration**: Uses TypeORM connection
+| Check | Full | Ready | Description |
+|---|---|---|---|
+| Database | ✅ | ✅ | PostgreSQL connection via TypeORM ping |
+| Redis | ✅ | ✅ | Set/get test value with 1s TTL |
+| Memory Heap | ✅ | ❌ | V8 heap < 150MB |
+| Memory RSS | ✅ | ❌ | Resident Set Size < 300MB |
+| Stellar Horizon | ✅ | ❌ | HTTP ping to Horizon `/health` |
+| Stellar Soroban RPC | ✅ | ❌ | JSON-RPC `getHealth` call |
+| Disk Usage | ✅ | ❌ | Memory-based disk usage < 90% |
+| Elasticsearch | ✅ | ❌ | Cluster health (skipped if not configured) |
 
-### 2. Redis Cache
-- **Check**: Set/get test value with 1-second TTL
-- **Failure**: Redis unreachable, connection refused, or value mismatch
-- **Configuration**: Uses configured cache manager
+## Response Formats
 
-### 3. Memory Usage
-- **Heap Check**: Monitors V8 heap usage (limit: 150MB)
-- **RSS Check**: Monitors Resident Set Size (limit: 300MB)
-- **Failure**: Memory usage exceeds configured thresholds
-
-### 4. Stellar Horizon
-- **Check**: HTTP ping to Stellar Horizon health endpoint
-- **Failure**: Horizon unreachable or unhealthy response
-- **Configuration**: Uses `STELLAR_HORIZON_URL` environment variable
-
-## Environment Variables
-
-```bash
-# Stellar Horizon URL for health checks
-STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
-
-# Database configuration (used by TypeORM health check)
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_USER=your_user
-DATABASE_PASSWORD=your_password
-DATABASE_NAME=scoopdope
-
-# Redis configuration (used by cache manager health check)
-REDIS_URL=redis://localhost:6379
+### Liveness (200 OK)
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "checks": {
+    "process": { "status": "up", "message": "Process alive" }
+  }
+}
 ```
 
-## Load Balancer Configuration
+### Readiness (200 OK)
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "checks": {
+    "database": { "status": "up" },
+    "redis": { "status": "up", "latencyMs": 2 }
+  }
+}
+```
+
+### Full (200 OK)
+Standard Terminus format with all dependency checks.
+
+### Environment
+```json
+{
+  "active": "blue",
+  "inactive": "green",
+  "region": "us-east-1",
+  "timestamp": "2025-01-01T00:00:00.000Z"
+}
+```
+
+### Version
+```json
+{
+  "version": "1.0.0",
+  "uptime": 3600,
+  "environment": "production",
+  "nodeVersion": "v20.0.0",
+  "platform": "linux",
+  "memoryUsage": { "rss": 123456789, "heapTotal": 98765432, "heapUsed": 654321 },
+  "startTime": "2025-01-01T00:00:00.000Z",
+  "environmentName": "blue"
+}
+```
+
+## Probe Configuration
+
+### Docker
+```dockerfile
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health/live', ...)"
+```
+
+### Docker Compose
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-sf", "http://localhost:3000/health/live"]
+  interval: 15s
+  timeout: 5s
+  retries: 3
+  start_period: 10s
+```
+
+### Kubernetes
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: 3000
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 2
+
+startupProbe:
+  httpGet:
+    path: /health/startup
+    port: 3000
+  initialDelaySeconds: 0
+  periodSeconds: 5
+  failureThreshold: 30
+```
+
+### AWS ALB Target Group
+```hcl
+health_check {
+  path                = "/health/ready"
+  healthy_threshold   = 2
+  unhealthy_threshold = 3
+  timeout             = 5
+  interval            = 15
+  matcher             = "200"
+}
+```
+
+### AWS ECS Task Definition
+```json
+{
+  "healthCheck": {
+    "command": ["CMD-SHELL", "curl -sf http://localhost:3000/health/live || exit 1"],
+    "interval": 15,
+    "timeout": 5,
+    "retries": 3,
+    "startPeriod": 10
+  }
+}
+```
 
 ### NGINX
 ```nginx
-upstream brain_storm_backend {
+upstream backend {
     server backend1:3000;
     server backend2:3000;
 }
 
 server {
-    location / {
-        proxy_pass http://brain_storm_backend;
-    }
-    
-    location /health {
+    location /health/ {
         access_log off;
-        proxy_pass http://brain_storm_backend;
+        proxy_pass http://backend;
+        proxy_connect_timeout 1s;
+        proxy_read_timeout 1s;
+    }
+
+    location /health/live {
+        access_log off;
+        proxy_pass http://backend;
         proxy_connect_timeout 1s;
         proxy_read_timeout 1s;
     }
@@ -128,185 +176,69 @@ server {
 
 ### HAProxy
 ```
-backend brain_storm_backend
+backend backend
     balance roundrobin
-    option httpchk GET /health
+    option httpchk GET /health/ready
     http-check expect status 200
     server backend1 backend1:3000 check
     server backend2 backend2:3000 check
 ```
 
-## Container Orchestration
+## Prometheus Metrics
 
-### Docker Compose
-```yaml
-services:
-  backend:
-    image: scoopdope-backend
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-```
+The module exposes health-specific metrics via the `/metrics` endpoint:
 
-### Kubernetes
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: scoopdope-backend
-spec:
-  template:
-    spec:
-      containers:
-      - name: backend
-        image: scoopdope-backend
-        ports:
-        - containerPort: 3000
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 2
-```
+- `health_check_up{probe="full"}` - 1 if full health check passes
+- `health_check_duration_seconds{probe, status}` - Health check latency histogram
+- `health_check_status{probe}` - Custom gauge per probe type
 
-## CI/CD Integration
-
-### Smoke Test Script
-Use the provided script for post-deployment verification:
+## CI/CD Smoke Tests
 
 ```bash
-# Run health check smoke test
+# Default full health check
 ./scripts/health-check.sh
 
-# With custom configuration
-API_URL=https://api.Scoopdope.app \
-MAX_RETRIES=20 \
-RETRY_INTERVAL=10 \
-./scripts/health-check.sh
+# Specific probes
+PROBE=live ./scripts/health-check.sh
+PROBE=ready ./scripts/health-check.sh
+PROBE=startup ./scripts/health-check.sh
+PROBE=env ./scripts/health-check.sh
+PROBE=version ./scripts/health-check.sh
+
+# Custom endpoint
+API_URL=https://api.scoopdope.example.com PROBE=live ./scripts/health-check.sh
 ```
 
-### GitHub Actions
-See `.github/workflows/health-check-example.yml` for complete CI/CD integration example.
+## Environment Variables
 
-## Monitoring Integration
+| Variable | Default | Description |
+|---|---|---|
+| `ENVIRONMENT_NAME` | `NODE_ENV` | Blue/green environment name |
+| `STELLAR_HORIZON_URL` | `https://horizon-testnet.stellar.org` | Horizon endpoint |
+| `ELASTICSEARCH_NODE` | `http://localhost:9200` | ES cluster endpoint |
+| `ELASTICSEARCH_API_KEY` | `` | ES API key |
 
-### Prometheus
-The health endpoint can be scraped by Prometheus for monitoring:
+## Graceful Shutdown
 
-```yaml
-# prometheus.yml
-scrape_configs:
-  - job_name: 'scoopdope-health'
-    metrics_path: '/health'
-    static_configs:
-      - targets: ['backend:3000']
-```
+The health service supports graceful shutdown for load balancer integration:
 
-### Custom Monitoring
-```bash
-# Simple monitoring script
-#!/bin/bash
-while true; do
-    if curl -f http://localhost:3000/health > /dev/null 2>&1; then
-        echo "$(date): Health check OK"
-    else
-        echo "$(date): Health check FAILED" >&2
-        # Send alert notification
-    fi
-    sleep 60
-done
-```
-
-## Development
-
-### Testing Health Checks Locally
-```bash
-# Start the application
-npm run start:dev
-
-# Test health endpoint
-curl http://localhost:3000/health
-
-# Test with pretty JSON
-curl http://localhost:3000/health | jq '.'
-
-# Test failure scenarios (stop Redis/PostgreSQL)
-docker-compose stop redis
-curl http://localhost:3000/health
-```
-
-### Adding Custom Health Checks
 ```typescript
-// In health.controller.ts
-private async checkCustomService(): Promise<HealthIndicatorResult> {
-  try {
-    // Your custom health check logic
-    const isHealthy = await this.customService.ping();
-    
-    if (isHealthy) {
-      return {
-        custom_service: {
-          status: 'up',
-          message: 'Custom service is responsive',
-        },
-      };
-    } else {
-      throw new Error('Custom service is not responding');
-    }
-  } catch (error) {
-    this.logger.warn('Custom service health check failed', { error: error.message });
-    throw new Error(`Custom service health check failed: ${error.message}`);
-  }
+// On SIGTERM/SIGINT, set shutting down flag
+// health/live will return 503, triggering ALB/ECS to drain connections
+healthService.setShuttingDown(true);
+```
+
+## Blue-Green Deployment
+
+The `/health/environment` endpoint returns the current deployment environment:
+
+```json
+{
+  "active": "blue",
+  "inactive": "green",
+  "region": "us-east-1",
+  "timestamp": "2025-01-01T00:00:00.000Z"
 }
-
-// Add to health check array
-const result = await this.health.check([
-  // ... existing checks
-  () => this.checkCustomService(),
-]);
 ```
 
-## Troubleshooting
-
-### Common Issues
-
-1. **Database Connection Failures**
-   - Check DATABASE_* environment variables
-   - Verify PostgreSQL is running and accessible
-   - Check network connectivity and firewall rules
-
-2. **Redis Connection Failures**
-   - Verify REDIS_URL environment variable
-   - Check Redis server status
-   - Validate Redis authentication if required
-
-3. **Memory Threshold Exceeded**
-   - Monitor application memory usage
-   - Adjust thresholds in health controller
-   - Investigate memory leaks
-
-4. **Stellar Horizon Failures**
-   - Check STELLAR_HORIZON_URL configuration
-   - Verify external network connectivity
-   - Monitor Stellar network status
-
-### Debug Mode
-Enable debug logging to troubleshoot health check issues:
-
-```bash
-LOG_LEVEL=debug npm run start:dev
-```
+Used by CI/CD pipelines to determine which target group to route traffic to during blue-green deployments.

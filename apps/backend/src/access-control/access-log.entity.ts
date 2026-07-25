@@ -9,6 +9,13 @@ import {
 import { Course } from '../courses/course.entity';
 import { User } from '../users/user.entity';
 
+export enum AccessAttemptType {
+  PAYMENT = 'payment',
+  TOKEN = 'token',
+  SUBSCRIPTION = 'subscription',
+  FREE = 'free',
+}
+
 @Entity('access_logs')
 export class AccessLog {
   @PrimaryGeneratedColumn('uuid')
@@ -39,6 +46,12 @@ export class AccessLog {
 
   @Column({ nullable: true })
   denialReason: string;
+
+  @Column({ type: 'enum', enum: AccessAttemptType, nullable: true })
+  attemptType: AccessAttemptType | null;
+
+  @Column({ nullable: true })
+  contentId: string | null;
 
   @CreateDateColumn()
   timestamp: Date;

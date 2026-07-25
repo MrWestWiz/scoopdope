@@ -114,6 +114,24 @@ kubectl exec -it <redis-pod> -- redis-cli FLUSHALL
 kubectl rollout restart deployment/redis
 ```
 
+## Findings & Mitigations
+
+The chaos engineering experiments surface resilience gaps and confirm recovery behavior for critical failure classes.
+
+### Database Failure
+- Finding: A PostgreSQL pod failure should lead the backend health check to return `503` rather than crash the service.
+- Mitigation: Use PodChaos on the `postgres` deployment and confirm failover behavior with readiness probes and deployment restart policies.
+
+### Redis Outage
+- Finding: Redis unavailability must not block core course and health endpoints.
+- Mitigation: Configure cache fallbacks and ensure the backend returns cached or degraded responses when Redis is down.
+
+### Network Partition
+- Finding: Intermittent network partitions should be visible through higher latency and rejected requests, not complete service failure.
+- Mitigation: Use retry logic, timeouts, and circuit breaker patterns so the backend degrades gracefully during isolated network outages.
+
+These documented mitigations improve platform reliability and provide a starting point for staging chaos drills.
+
 ## Cleanup
 
 Remove all chaos experiments:

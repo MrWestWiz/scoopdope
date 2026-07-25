@@ -5,6 +5,11 @@ export enum NotificationType {
   COMPLETION = 'completion',
   CREDENTIAL_ISSUED = 'credential_issued',
   COURSE_PUBLISHED = 'course_published',
+  QA_QUESTION = 'qa_question',
+  QA_ANSWER = 'qa_answer',
+  ANNOUNCEMENT = 'announcement',
+  WAITLIST_JOINED = 'waitlist_joined',
+  WAITLIST_ENROLLED = 'waitlist_enrolled',
 }
 
 @Entity('notifications')
