@@ -46,6 +46,11 @@ export const validationSchema = Joi.object({
   EMAIL_FROM: Joi.string().default('"Scoopdope" <no-reply@Scoopdope.app>'),
   EMAIL_ENABLED: Joi.boolean().default(false),
 
+  // Batch queue
+  BATCH_JOB_MAX_RETRIES: Joi.number().default(3),
+  BATCH_ALERT_SLACK_WEBHOOK_URL: Joi.string().uri().allow('').default(''),
+  BATCH_ALERT_PAGERDUTY_ROUTING_KEY: Joi.string().allow('').default(''),
+
   // Frontend
   FRONTEND_URL: Joi.string().uri().default('http://localhost:3001'),
 

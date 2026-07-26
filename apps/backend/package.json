@@ -90,7 +90,10 @@
     "typeorm": "^0.3.0",
     "web-push": "^3.6.7",
     "winston": "^3.11.0",
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "@bull-board/api": "^4.0.0",
+    "@bull-board/express": "^4.0.0",
+    "bullmq": "^1.92.0"
   },
   "devDependencies": {
     "@eslint/js": "^8.56.0",
