@@ -6,6 +6,7 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { CreateReplyDto } from './dto/create-reply.dto';
 import { Post } from './post.entity';
 import { Reply } from './reply.entity';
+import { ForumVote, VoteDirection, VoteTarget } from './forum-vote.entity';
 import { ModerationService } from '../moderation/moderation.service';
 import { ContentType } from '../moderation/moderation.enums';
 import { SearchService } from '../search/search.service';
@@ -20,6 +21,8 @@ export class ForumsService {
     private readonly replyRepo: Repository<Reply>,
     @InjectRepository(Course)
     private readonly courseRepo: Repository<Course>,
+    @InjectRepository(ForumVote)
+    private readonly voteRepo: Repository<ForumVote>,
     private readonly moderationService: ModerationService,
     private readonly searchService: SearchService,
     private readonly streaksService: StreaksService
@@ -38,7 +41,6 @@ export class ForumsService {
   async createPost(courseId: string, userId: string, role: string, dto: CreatePostDto) {
     await this.ensureCourseExists(courseId);
 
-    // Record activity for streak
     await this.streaksService.recordActivity(userId);
 
     if (dto.isPinned && !this.canModerate(role)) {
@@ -70,7 +72,6 @@ export class ForumsService {
       throw new NotFoundException('Post not found');
     }
 
-    // Record activity for streak
     await this.streaksService.recordActivity(userId);
 
     if (dto.isAnswer && !this.canModerate(role)) {
@@ -102,6 +103,71 @@ export class ForumsService {
       userId
     );
     return savedReply;
+  }
+
+  async votePost(
+    postId: string,
+    userId: string,
+    direction: VoteDirection | 'remove'
+  ): Promise<Post> {
+    const post = await this.postRepo.findOne({ where: { id: postId } });
+    if (!post) throw new NotFoundException('Post not found');
+
+    return this.applyVote('post', postId, userId, direction, post, this.postRepo);
+  }
+
+  async voteReply(
+    replyId: string,
+    userId: string,
+    direction: VoteDirection | 'remove'
+  ): Promise<Reply> {
+    const reply = await this.replyRepo.findOne({ where: { id: replyId } });
+    if (!reply) throw new NotFoundException('Reply not found');
+
+    return this.applyVote('reply', replyId, userId, direction, reply, this.replyRepo);
+  }
+
+  private async applyVote<T extends { upvotes: number; downvotes: number }>(
+    targetType: VoteTarget,
+    targetId: string,
+    userId: string,
+    direction: VoteDirection | 'remove',
+    target: T,
+    repo: Repository<T>
+  ): Promise<T> {
+    const existing = await this.voteRepo.findOne({
+      where: { userId, targetType, targetId },
+    });
+
+    if (direction === 'remove') {
+      if (existing) {
+        if (existing.direction === 'up') target.upvotes = Math.max(0, target.upvotes - 1);
+        else target.downvotes = Math.max(0, target.downvotes - 1);
+        await this.voteRepo.remove(existing);
+      }
+    } else if (existing) {
+      if (existing.direction !== direction) {
+        // switching vote direction
+        if (existing.direction === 'up') {
+          target.upvotes = Math.max(0, target.upvotes - 1);
+          target.downvotes += 1;
+        } else {
+          target.downvotes = Math.max(0, target.downvotes - 1);
+          target.upvotes += 1;
+        }
+        existing.direction = direction;
+        await this.voteRepo.save(existing);
+      }
+      // same direction = no-op
+    } else {
+      // new vote
+      const vote = this.voteRepo.create({ userId, targetType, targetId, direction });
+      await this.voteRepo.save(vote);
+      if (direction === 'up') target.upvotes += 1;
+      else target.downvotes += 1;
+    }
+
+    return repo.save(target);
   }
 
   private async ensureCourseExists(courseId: string) {

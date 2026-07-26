@@ -42,6 +42,12 @@ export class Post {
   @Column({ nullable: true })
   answerReplyId: string | null;
 
+  @Column({ default: 0 })
+  upvotes: number;
+
+  @Column({ default: 0 })
+  downvotes: number;
+
   @OneToMany(() => Reply, (reply) => reply.post)
   replies: Reply[];
 

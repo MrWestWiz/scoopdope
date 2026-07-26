@@ -18,6 +18,7 @@ pub enum DataKey {
     NextProposalId,                      // u64 counter
     UpgradeProposal(u64),                // id → UpgradeProposalRecord
     TimelockExpiry(u64),                 // upgrade_id → expiry_ledger
+    TimelockLedgers,                     // u32 default timelock duration in ledgers
 }
 
 // =============================================================================
@@ -78,21 +79,32 @@ impl GovernanceContract {
     // Admin
     // -------------------------------------------------------------------------
 
-    pub fn initialize(env: Env, admin: Address, token_contract: Address) {
+    pub fn initialize(env: Env, admin: Address, token_contract: Address, timelock_ledgers: u32) {
         assert!(
             !env.storage().instance().has(&DataKey::Admin),
             "Already initialized"
         );
+        assert!(timelock_ledgers > 0, "Timelock must be greater than 0");
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
             .instance()
             .set(&DataKey::TokenContract, &token_contract);
+        env.storage()
+            .instance()
+            .set(&DataKey::TimelockLedgers, &timelock_ledgers);
         env.storage().instance().set(&DataKey::NextProposalId, &1_u64);
     }
 
     pub fn get_admin(env: Env) -> Address {
         env.storage().instance().get(&DataKey::Admin).unwrap()
+    }
+
+    pub fn get_timelock_ledgers(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::TimelockLedgers)
+            .unwrap_or(0)
     }
 
     // -------------------------------------------------------------------------
@@ -439,7 +451,8 @@ mod tests {
         let client = GovernanceContractClient::new(&env, &id);
         let admin = Address::generate(&env);
         let token = Address::generate(&env);
-        client.initialize(&admin, &token);
+        let timelock_ledgers = 50u32;
+        client.initialize(&admin, &token, &timelock_ledgers);
         (env, client, admin, token)
     }
 
@@ -610,5 +623,193 @@ mod tests {
         let prop = client.get_proposal(&id).unwrap();
         assert_eq!(prop.votes_for, 0);
         assert_eq!(prop.votes_against, 0);
+    }
+
+    // =========================================================================
+    // Timelock Tests (Issue #555)
+    // =========================================================================
+
+    #[test]
+    fn test_initialize_with_timelock() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let id = env.register_contract(None, GovernanceContract);
+        let client = GovernanceContractClient::new(&env, &id);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+        let timelock_ledgers = 100u32;
+
+        client.initialize(&admin, &token, &timelock_ledgers);
+        assert_eq!(client.get_timelock_ledgers(), timelock_ledgers);
+    }
+
+    #[test]
+    #[should_panic(expected = "Timelock must be greater than 0")]
+    fn test_initialize_with_zero_timelock_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let id = env.register_contract(None, GovernanceContract);
+        let client = GovernanceContractClient::new(&env, &id);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+
+        client.initialize(&admin, &token, &0u32);
+    }
+
+    #[test]
+    #[should_panic(expected = "Timelock not expired")]
+    fn test_execute_upgrade_before_timelock_panics() {
+        let (env, client, _, _) = setup();
+        let proposer = Address::generate(&env);
+        let contract_addr = Address::generate(&env);
+        let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
+        let voting_end = env.ledger().sequence() + 10;
+        let timelock = voting_end + 50;
+
+        // Propose upgrade
+        let upgrade_id = client.propose_upgrade(
+            &proposer,
+            &contract_addr,
+            &wasm_hash,
+            &voting_end,
+            &timelock,
+        );
+
+        // Approve upgrade
+        env.ledger().set(LedgerInfo {
+            sequence_number: voting_end + 1,
+            timestamp: (voting_end + 1) as u64 * 5,
+            protocol_version: 21,
+            network_id: Default::default(),
+            base_reserve: 10,
+            min_temp_entry_ttl: 1000,
+            min_persistent_entry_ttl: 1000,
+            max_entry_ttl: 100_000,
+        });
+        client.approve_upgrade(&upgrade_id);
+
+        // Try to execute before timelock expires (should panic)
+        client.execute_upgrade(&upgrade_id);
+    }
+
+    #[test]
+    fn test_execute_upgrade_at_timelock_threshold() {
+        let (env, client, _, _) = setup();
+        let proposer = Address::generate(&env);
+        let contract_addr = Address::generate(&env);
+        let wasm_hash = BytesN::from_array(&env, &[1u8; 32]);
+        let voting_end = env.ledger().sequence() + 10;
+        let timelock = voting_end + 50;
+
+        // Propose upgrade
+        let upgrade_id = client.propose_upgrade(
+            &proposer,
+            &contract_addr,
+            &wasm_hash,
+            &voting_end,
+            &timelock,
+        );
+
+        // Approve upgrade
+        env.ledger().set(LedgerInfo {
+            sequence_number: voting_end + 1,
+            timestamp: (voting_end + 1) as u64 * 5,
+            protocol_version: 21,
+            network_id: Default::default(),
+            base_reserve: 10,
+            min_temp_entry_ttl: 1000,
+            min_persistent_entry_ttl: 1000,
+            max_entry_ttl: 100_000,
+        });
+        client.approve_upgrade(&upgrade_id);
+
+        // Advance to exactly the timelock threshold
+        env.ledger().set(LedgerInfo {
+            sequence_number: timelock,
+            timestamp: timelock as u64 * 5,
+            protocol_version: 21,
+            network_id: Default::default(),
+            base_reserve: 10,
+            min_temp_entry_ttl: 1000,
+            min_persistent_entry_ttl: 1000,
+            max_entry_ttl: 100_000,
+        });
+
+        // Execute should succeed at threshold
+        client.execute_upgrade(&upgrade_id);
+
+        // Verify execution
+        let upgrade = client.get_upgrade_proposal(&upgrade_id).unwrap();
+        assert!(upgrade.executed);
+    }
+
+    #[test]
+    fn test_execute_upgrade_after_timelock_expires() {
+        let (env, client, _, _) = setup();
+        let proposer = Address::generate(&env);
+        let contract_addr = Address::generate(&env);
+        let wasm_hash = BytesN::from_array(&env, &[2u8; 32]);
+        let voting_end = env.ledger().sequence() + 10;
+        let timelock = voting_end + 50;
+
+        // Propose upgrade
+        let upgrade_id = client.propose_upgrade(
+            &proposer,
+            &contract_addr,
+            &wasm_hash,
+            &voting_end,
+            &timelock,
+        );
+
+        // Approve upgrade
+        env.ledger().set(LedgerInfo {
+            sequence_number: voting_end + 1,
+            timestamp: (voting_end + 1) as u64 * 5,
+            protocol_version: 21,
+            network_id: Default::default(),
+            base_reserve: 10,
+            min_temp_entry_ttl: 1000,
+            min_persistent_entry_ttl: 1000,
+            max_entry_ttl: 100_000,
+        });
+        client.approve_upgrade(&upgrade_id);
+
+        // Advance well past the timelock
+        env.ledger().set(LedgerInfo {
+            sequence_number: timelock + 100,
+            timestamp: (timelock + 100) as u64 * 5,
+            protocol_version: 21,
+            network_id: Default::default(),
+            base_reserve: 10,
+            min_temp_entry_ttl: 1000,
+            min_persistent_entry_ttl: 1000,
+            max_entry_ttl: 100_000,
+        });
+
+        // Execute should succeed well after timelock
+        client.execute_upgrade(&upgrade_id);
+
+        // Verify execution
+        let upgrade = client.get_upgrade_proposal(&upgrade_id).unwrap();
+        assert!(upgrade.executed);
+    }
+
+    #[test]
+    #[should_panic(expected = "Timelock must be after voting")]
+    fn test_propose_upgrade_with_timelock_before_voting_end_panics() {
+        let (env, client, _, _) = setup();
+        let proposer = Address::generate(&env);
+        let contract_addr = Address::generate(&env);
+        let wasm_hash = BytesN::from_array(&env, &[3u8; 32]);
+        let voting_end = env.ledger().sequence() + 50;
+        let invalid_timelock = voting_end - 10; // timelock before voting end
+
+        client.propose_upgrade(
+            &proposer,
+            &contract_addr,
+            &wasm_hash,
+            &voting_end,
+            &invalid_timelock,
+        );
     }
 }

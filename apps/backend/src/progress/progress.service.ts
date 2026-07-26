@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, IsNull } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Progress } from './progress.entity';
 import { RecordProgressDto } from './dto/record-progress.dto';
 import { StellarService } from '../stellar/stellar.service';
@@ -20,6 +21,7 @@ export class ProgressService {
     private streaksService: StreaksService,
     private bundlesService: BundlesService,
     private metrics: MetricsService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   async record(userId: string, dto: RecordProgressDto, stellarPublicKey: string) {
@@ -65,6 +67,14 @@ export class ProgressService {
       this.metrics.incrementCourseCompleted(dto.courseId, 'all');
 
       await this.credentialsService.issue(userId, dto.courseId, stellarPublicKey);
+
+      // Emit event so CertificatesService can issue an on-chain certificate
+      this.eventEmitter.emit('progress.completed', {
+        userId,
+        courseId: dto.courseId,
+        stellarPublicKey,
+        courseName: dto.courseId, // enriched downstream via the enrollment relation
+      });
 
       // Mint 50 BST to referrer on first course completion
       const completedCount = await this.repo.count({
