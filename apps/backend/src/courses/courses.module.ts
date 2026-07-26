@@ -20,15 +20,20 @@ import { CoursePrerequisite } from './course-prerequisite.entity';
 import { PrerequisitesService } from './prerequisites.service';
 import { PrerequisitesController } from './prerequisites.controller';
 import { CourseSchedulerService } from './course-scheduler.service';
+import { DripSchedulerService } from './drip-scheduler.service';
+import { TranscribeService } from './transcribe.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { MetricsModule } from '../metrics/metrics.module';
+import { User } from '../users/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Course, CourseModule, Lesson, Review, Enrollment, CourseVersion, CoursePrerequisite]),
+    TypeOrmModule.forFeature([Course, CourseModule, Lesson, Review, Enrollment, CourseVersion, CoursePrerequisite, User]),
     SearchModule,
     NotificationsModule,
+    MetricsModule,
   ],
-  providers: [CoursesService, ModulesService, LessonsService, ReviewsService, CourseVersioningService, PrerequisitesService, CourseSchedulerService],
+  providers: [CoursesService, ModulesService, LessonsService, ReviewsService, CourseVersioningService, PrerequisitesService, CourseSchedulerService, DripSchedulerService, TranscribeService],
   controllers: [CoursesController, ModulesController, ReviewsController, CourseVersioningController, PrerequisitesController],
   exports: [CoursesService, PrerequisitesService],
 })

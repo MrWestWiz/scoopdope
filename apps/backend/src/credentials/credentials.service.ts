@@ -37,7 +37,17 @@ export class CredentialsService {
       }
     }
 
-    const txHash = await this.stellarService.issueCredential(stellarPublicKey, courseId);
+    const metadata = {
+      courseName: course.title,
+      grade: 'Pass', // Could be calculated from quiz scores if available
+      skills: course.skills || [],
+    };
+
+    const txHash = await this.stellarService.issueCredential(
+      stellarPublicKey,
+      courseId,
+      metadata
+    );
 
     // Mint reward tokens after credential issuance
     try {
@@ -46,11 +56,47 @@ export class CredentialsService {
       // Non-fatal
     }
 
-    const credential = this.repo.create({ userId, courseId, txHash, stellarPublicKey });
+    const credential = this.repo.create({
+      userId,
+      courseId,
+      txHash,
+      stellarPublicKey,
+      grade: metadata.grade,
+    });
     return this.repo.save(credential);
   }
 
-  findByUser(userId: string) {
+  async issueBundle(userId: string, bundleId: string, stellarPublicKey: string): Promise<Credential> {
+    const existing = await this.repo.findOne({ where: { userId, bundleId } });
+    if (existing) return existing;
+
+    const txHash = await this.stellarService.issueCredential(stellarPublicKey, `bundle:${bundleId}`);
+
+    try {
+      await this.stellarService.mintReward(stellarPublicKey, 500); // Higher reward for bundle completion
+    } catch {
+      // Non-fatal
+    }
+
+    const credential = this.repo.create({ userId, bundleId, txHash, stellarPublicKey });
+    return this.repo.save(credential);
+  }
+
+  async issueLearningPath(userId: string, learningPathId: string, stellarPublicKey: string): Promise<Credential> {
+    const existing = await this.repo.findOne({ where: { userId, learningPathId } });
+    if (existing) return existing;
+
+    const txHash = await this.stellarService.issueCredential(stellarPublicKey, `learning-path:${learningPathId}`);
+
+    try {
+      await this.stellarService.mintReward(stellarPublicKey, 750);
+    } catch {
+      // Non-fatal
+    }
+
+    const credential = this.repo.create({ userId, learningPathId, txHash, stellarPublicKey });
+    return this.repo.save(credential);
+  }  findByUser(userId: string) {
     return this.repo.find({ where: { userId }, order: { issuedAt: 'DESC' } });
   }
 

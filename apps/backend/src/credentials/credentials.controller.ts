@@ -17,8 +17,6 @@ import { CredentialsService } from './credentials.service';
 import { CertificatePdfService } from './certificate-pdf.service';
 
 @ApiTags('credentials')
-@ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller('credentials')
 export class CredentialsController {
   constructor(
@@ -26,9 +24,39 @@ export class CredentialsController {
     private certificatePdfService: CertificatePdfService
   ) {}
 
+  @Get('detail/:id')
+  @ApiOperation({ summary: 'Public: Get a credential by ID' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  @ApiResponse({ status: 200, description: 'Credential found' })
+  @ApiResponse({ status: 404, description: 'Credential not found' })
+  async findOne(@Param('id') id: string) {
+    const credential = await this.credentialsService.findOne(id);
+    return {
+      id: credential.id,
+      courseName: credential.course?.title,
+      studentName: credential.user?.username || credential.user?.email || 'Student',
+      issuedAt: credential.issuedAt,
+      txHash: credential.txHash,
+      grade: credential.grade,
+      skills: credential.course?.skills,
+    };
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @Get(':id/pdf')
   @Header('Content-Type', 'application/pdf')
   @ApiOperation({ summary: 'Download a credential as a PDF certificate' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({ status: 200, description: 'PDF certificate generated successfully' })
   async downloadPdf(@Param('id') id: string) {
     const credential = await this.credentialsService.findOne(id);
@@ -39,8 +67,15 @@ export class CredentialsController {
     });
   }
 
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @Get(':userId')
   @ApiOperation({ summary: 'List all credentials for a user' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({
     status: 200,
     description: 'List of credentials',
@@ -57,12 +92,16 @@ export class CredentialsController {
 
   @Get('verify/:txHash')
   @ApiOperation({ summary: 'Verify a credential on-chain by transaction hash' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({
     status: 200,
     description: 'Verification result',
     schema: { example: { valid: true, txHash: 'abc123' } },
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Transaction not found' })
   verify(@Param('txHash') txHash: string) {
     return this.credentialsService.verify(txHash);
@@ -72,6 +111,10 @@ export class CredentialsController {
   @UseGuards(AuthGuard(['jwt', 'api-key']), RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Admin: manually issue a credential' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiBody({
     schema: { example: { userId: 'uuid', courseId: 'uuid', stellarPublicKey: 'GABC...' } },
   })

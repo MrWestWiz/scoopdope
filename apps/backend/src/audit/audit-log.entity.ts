@@ -17,6 +17,8 @@ export enum AuditAction {
   ROLE_CHANGED = 'admin.role_changed',
   USER_BANNED = 'admin.user_banned',
   SECRET_ROTATED = 'secret.rotated',
+  GDPR_DATA_EXPORT = 'gdpr.data_export',
+  GDPR_ACCOUNT_DELETION = 'gdpr.account_deletion',
 }
 
 @Entity('audit_logs')

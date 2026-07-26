@@ -34,6 +34,12 @@ export class Reply {
   @Column({ default: false })
   isAnswer: boolean;
 
+  @Column({ default: 0 })
+  upvotes: number;
+
+  @Column({ default: 0 })
+  downvotes: number;
+
   @CreateDateColumn()
   createdAt: Date;
 }

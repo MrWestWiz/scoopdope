@@ -35,4 +35,15 @@ export class Enrollment {
 
   @Column({ nullable: true, type: 'timestamp' })
   completedAt: Date | null;
+
+  /** The course version number the student enrolled on. Null = pre-versioning. */
+  @Column({ nullable: true, type: 'int' })
+  enrolledVersionNumber: number | null;
+
+  /**
+   * Soroban transaction hash recorded when the enrollment was confirmed on-chain.
+   * Null if the on-chain call was not attempted or is pending.
+   */
+  @Column({ nullable: true, type: 'varchar', length: 64 })
+  transactionHash: string | null;
 }

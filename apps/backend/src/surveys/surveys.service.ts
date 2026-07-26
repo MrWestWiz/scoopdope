@@ -22,6 +22,7 @@ export class SurveysService {
     description: string,
     triggerType: 'completion' | 'milestone',
     triggerMilestone?: number,
+    allowAnonymous = false,
   ): Promise<Survey> {
     const survey = this.surveyRepo.create({
       courseId,
@@ -29,8 +30,32 @@ export class SurveysService {
       description,
       triggerType,
       triggerMilestone,
+      allowAnonymous,
     });
     return this.surveyRepo.save(survey);
+  }
+
+  /** Auto-create a default NPS + open-ended survey for a course on completion */
+  async createCompletionSurvey(courseId: string, courseTitle: string): Promise<Survey> {
+    const existing = await this.surveyRepo.findOne({
+      where: { courseId, triggerType: 'completion', isActive: true },
+    });
+    if (existing) return existing;
+
+    const survey = await this.createSurvey(
+      courseId,
+      `${courseTitle} — Feedback`,
+      'Help us improve this course with your feedback.',
+      'completion',
+      undefined,
+      true,
+    );
+
+    await this.addQuestion(survey.id, 'How likely are you to recommend this course? (0–10)', 'rating', 1, undefined, true);
+    await this.addQuestion(survey.id, 'What did you enjoy most about this course?', 'text', 2, undefined, false);
+    await this.addQuestion(survey.id, 'What could be improved?', 'text', 3, undefined, false);
+
+    return survey;
   }
 
   async addQuestion(
@@ -56,11 +81,14 @@ export class SurveysService {
     surveyId: string,
     userId: string,
     answers: Record<string, string | number>,
+    isAnonymous = false,
   ): Promise<SurveyResponse> {
+    const survey = await this.surveyRepo.findOne({ where: { id: surveyId } });
     const response = this.responseRepo.create({
       surveyId,
-      userId,
+      userId: survey?.allowAnonymous && isAnonymous ? 'anonymous' : userId,
       answers,
+      isAnonymous: survey?.allowAnonymous ? isAnonymous : false,
     });
     return this.responseRepo.save(response);
   }
@@ -82,32 +110,38 @@ export class SurveysService {
 
   async getAnalytics(surveyId: string): Promise<{
     totalResponses: number;
-    responseRate: number;
+    npsScore: number | null;
     questionStats: Record<string, any>;
   }> {
     const survey = await this.surveyRepo.findOne({
       where: { id: surveyId },
-      relations: ['course', 'responses', 'questions'],
+      relations: ['responses', 'questions'],
     });
 
     if (!survey) throw new Error('Survey not found');
 
     const totalResponses = survey.responses.length;
     const questionStats: Record<string, any> = {};
+    let npsScore: number | null = null;
 
     for (const question of survey.questions) {
       const responses = survey.responses.map((r) => r.answers[question.id]);
 
       if (question.type === 'rating') {
         const ratings = responses.filter((r) => typeof r === 'number') as number[];
-        questionStats[question.id] = {
-          average: ratings.length > 0 ? ratings.reduce((a, b) => a + b) / ratings.length : 0,
-          count: ratings.length,
-        };
+        const avg = ratings.length > 0 ? ratings.reduce((a, b) => a + b) / ratings.length : 0;
+        questionStats[question.id] = { average: avg, count: ratings.length };
+
+        // NPS: first rating question with 0-10 scale
+        if (npsScore === null && ratings.length > 0) {
+          const promoters = ratings.filter((r) => r >= 9).length;
+          const detractors = ratings.filter((r) => r <= 6).length;
+          npsScore = Math.round(((promoters - detractors) / ratings.length) * 100);
+        }
       } else if (question.type === 'mcq') {
         const counts: Record<string, number> = {};
         responses.forEach((r) => {
-          if (r) counts[r] = (counts[r] || 0) + 1;
+          if (r) counts[String(r)] = (counts[String(r)] || 0) + 1;
         });
         questionStats[question.id] = counts;
       } else {
@@ -115,10 +149,37 @@ export class SurveysService {
       }
     }
 
-    return {
-      totalResponses,
-      responseRate: totalResponses > 0 ? (totalResponses / survey.course.durationHours) * 100 : 0,
-      questionStats,
-    };
+    return { totalResponses, npsScore, questionStats };
+  }
+
+  /** Aggregate survey results across all courses for an instructor */
+  async getInstructorSurveyAggregate(instructorId: string): Promise<{
+    courseId: string;
+    surveyId: string;
+    title: string;
+    totalResponses: number;
+    npsScore: number | null;
+  }[]> {
+    const surveys = await this.surveyRepo.find({
+      where: { isActive: true },
+      relations: ['course', 'responses', 'questions'],
+    });
+
+    const instructorSurveys = surveys.filter(
+      (s) => s.course && (s.course as any).instructorId === instructorId,
+    );
+
+    return Promise.all(
+      instructorSurveys.map(async (s) => {
+        const analytics = await this.getAnalytics(s.id);
+        return {
+          courseId: s.courseId,
+          surveyId: s.id,
+          title: s.title,
+          totalResponses: analytics.totalResponses,
+          npsScore: analytics.npsScore,
+        };
+      }),
+    );
   }
 }

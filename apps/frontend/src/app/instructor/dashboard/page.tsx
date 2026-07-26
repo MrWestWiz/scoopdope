@@ -23,6 +23,14 @@ interface StudentProgress {
   progressPct: number;
 }
 
+interface SurveyAggregate {
+  courseId: string;
+  surveyId: string;
+  title: string;
+  totalResponses: number;
+  npsScore: number | null;
+}
+
 interface DashboardData {
   courses: CourseAnalytics[];
   studentProgress: StudentProgress[];
@@ -82,6 +90,7 @@ function getMockData(): DashboardData {
 
 export default function InstructorDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [surveys, setSurveys] = useState<SurveyAggregate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -102,9 +111,14 @@ export default function InstructorDashboardPage() {
         });
       } catch {
         setData(getMockData());
-      } finally {
-        setIsLoading(false);
       }
+      try {
+        const surveyRes = await api.get('/v1/surveys/instructor/me/aggregate');
+        setSurveys(surveyRes.data ?? []);
+      } catch {
+        // surveys optional
+      }
+      setIsLoading(false);
     }
     load();
   }, []);
@@ -122,6 +136,12 @@ export default function InstructorDashboardPage() {
             className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm hover:bg-blue-700"
           >
             + New Course
+          </Link>
+          <Link
+            href="/instructor/revenue"
+            className="rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            Revenue Analytics
           </Link>
         </div>
 
@@ -225,6 +245,39 @@ export default function InstructorDashboardPage() {
                 ))}
           </div>
         </section>
+
+        {/* Survey Feedback Aggregate */}
+        {surveys.length > 0 && (
+          <section>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">Course Feedback (NPS)</h2>
+            <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                  <tr>
+                    {['Survey', 'Responses', 'NPS Score'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left font-medium">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
+                  {surveys.map((s) => (
+                    <tr key={s.surveyId} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{s.title}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{s.totalResponses}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {s.npsScore !== null ? (
+                          <span className={s.npsScore >= 50 ? 'text-green-600 dark:text-green-400' : s.npsScore >= 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}>
+                            {s.npsScore}
+                          </span>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
       </main>
     </ProtectedRoute>
   );

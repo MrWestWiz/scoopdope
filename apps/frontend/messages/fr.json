@@ -79,6 +79,35 @@
     "empty": "Aucun favori pour l'instant.",
     "browseCourses": "Parcourir les cours →"
   },
+  "gdpr": {
+    "title": "Confidentialité et Données",
+    "description": "Gérez vos données personnelles conformément au RGPD. Vous pouvez exporter toutes les données que nous détenons sur vous ou demander la suppression de votre compte.",
+    "exportData": "Exporter mes Données",
+    "exporting": "Exportation…",
+    "exported": "Exporté ✓",
+    "exportError": "Échec de l'exportation des données. Veuillez réessayer.",
+    "deleteAccount": "Supprimer le Compte",
+    "confirmTitle": "Supprimer votre Compte",
+    "confirmDescription": "Cette action est irréversible. Toutes vos données personnelles seront anonymisées et votre compte sera définitivement désactivé. Vous perdrez l'accès à vos cours, diplômes et portefeuille.",
+    "typeConfirm": "Tapez {phrase} pour confirmer",
+    "confirmDelete": "Supprimer Définitivement",
+    "deleting": "Suppression…",
+    "deleteSuccess": "Votre compte a été programmé pour suppression. Vous serez redirigé sous peu.",
+    "deleteError": "Échec de la suppression du compte. Veuillez réessayer.",
+    "cancel": "Annuler",
+    "redirecting": "Redirection vers la page d'accueil…"
+  },
+  "video": {
+    "loading": "Chargement de la vidéo…",
+    "completed": "Leçon terminée"
+  },
+  "vesting": {
+    "title": "Calendrier d'acquisition",
+    "total": "Total : {amount}",
+    "cliffLedger": "Ledger cliff : {ledger}",
+    "endLedger": "Ledger final : {ledger}",
+    "locked": "Bloqué"
+  },
   "shortcuts": {
     "title": "Raccourcis clavier",
     "navigation": "Navigation",

@@ -47,6 +47,24 @@ export class CouponsService {
     return this.couponsRepository.save(coupons);
   }
 
+  async validateForCheckout(
+    code: string,
+    priceUsd: number,
+  ): Promise<{ valid: boolean; discount: number; discountType: 'percentage' | 'fixed' }> {
+    const coupon = await this.couponsRepository.findOne({ where: { code } });
+
+    if (!coupon || !coupon.isActive) return { valid: false, discount: 0, discountType: 'fixed' };
+    if (coupon.expiresAt && new Date() > coupon.expiresAt) return { valid: false, discount: 0, discountType: 'fixed' };
+    if (coupon.maxUsage && coupon.usageCount >= coupon.maxUsage) return { valid: false, discount: 0, discountType: 'fixed' };
+
+    const discount =
+      coupon.discountType === 'percentage'
+        ? (priceUsd * Number(coupon.discountValue)) / 100
+        : Math.min(Number(coupon.discountValue), priceUsd);
+
+    return { valid: true, discount, discountType: coupon.discountType };
+  }
+
   async validate(dto: ValidateCouponDto): Promise<{ valid: boolean; discount: number }> {
     const coupon = await this.couponsRepository.findOne({
       where: { code: dto.code },

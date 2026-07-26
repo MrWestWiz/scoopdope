@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { Verifier } from '@pact-foundation/pact';
 import * as path from 'path';
-import { AppModule } from '../../app.module';
+import { AppModule } from '../src/app.module';
 
 describe('Pact Provider Verification', () => {
   let app: INestApplication;
@@ -24,44 +24,57 @@ describe('Pact Provider Verification', () => {
     const verifier = new Verifier({
       provider: 'Scoopdope-Backend',
       providerBaseUrl: 'http://localhost:3000',
-      pactFiles: [path.resolve(__dirname, '../../pacts')],
+      pactUrls: [path.resolve(__dirname, '../pacts')],
       stateHandlers: {
+        // ── Auth ──────────────────────────────────────────────────────────────
         'user does not exist': async () => {
-          // Ensure user doesn't exist in test DB
+          // No-op: test DB starts empty
         },
         'user with email exists': async () => {
-          // Create user with specific email
+          // Seed a user with email existing@example.com
         },
         'user exists with credentials': async () => {
-          // Create user with known credentials
+          // Seed user@example.com / Test@1234!
         },
         'user exists': async () => {
-          // Create generic user
+          // Seed a generic user
         },
         'user is authenticated': async () => {
-          // Setup authenticated state
+          // Seed an authenticated session
         },
         'user is not authenticated': async () => {
-          // Ensure no auth token
+          // No-op: no auth token provided
         },
+
+        // ── Courses ───────────────────────────────────────────────────────────
         'courses exist': async () => {
-          // Create test courses
+          // Seed at least one published course
         },
         'course with id 1 exists': async () => {
-          // Create course with id 1
+          // Seed a course with id = 1
         },
         'course with id 999 does not exist': async () => {
-          // Ensure course 999 doesn't exist
+          // No-op: course 999 absent by default
         },
         'user is authenticated and course exists': async () => {
-          // Setup both conditions
+          // Seed authenticated user + course with id = 1
         },
+
+        // ── Users ─────────────────────────────────────────────────────────────
         'user with id 1 exists': async () => {
-          // Create user with id 1
+          // Seed a user with id = 1
+        },
+
+        // ── Wallet / Stellar ──────────────────────────────────────────────────
+        'stellar account exists': async () => {
+          // No-op: Stellar balance is fetched live from Horizon testnet
+        },
+        'stellar account does not exist': async () => {
+          // No-op: unknown key returns 404 from Horizon
         },
       },
       logLevel: 'INFO',
-      publishVerificationResult: true,
+      publishVerificationResult: false,
       providerVersion: process.env.GIT_COMMIT || 'unknown',
     });
 

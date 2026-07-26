@@ -7,41 +7,18 @@ import { useAuth } from '@/hooks/useAuth';
 import { useNotifications } from '@/hooks/useNotifications';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { MobileNav } from '@/components/layout/MobileNav';
 
 export function Navbar() {
   const pathname = usePathname();
   const { user, isAuthenticated, logout } = useAuth();
   const { unreadCount, clearUnread } = useNotifications();
-  const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const isActive = (href: string) =>
     pathname === href || pathname.endsWith(href)
       ? 'text-blue-600 dark:text-blue-400 font-semibold'
       : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white';
-
-  const navLinks = (
-    <>
-      <Link
-        href="/courses"
-        aria-current={pathname.endsWith('/courses') ? 'page' : undefined}
-        className={`text-sm transition-colors ${isActive('/courses')}`}
-        onClick={() => setMenuOpen(false)}
-      >
-        Courses
-      </Link>
-      {isAuthenticated && (
-        <Link
-          href="/dashboard"
-          aria-current={pathname.endsWith('/dashboard') ? 'page' : undefined}
-          className={`text-sm transition-colors ${isActive('/dashboard')}`}
-          onClick={() => setMenuOpen(false)}
-        >
-          Dashboard
-        </Link>
-      )}
-    </>
-  );
 
   return (
     <nav
@@ -56,7 +33,22 @@ export function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden sm:flex items-center gap-4">
-          {navLinks}
+          <Link
+            href="/courses"
+            aria-current={pathname.endsWith('/courses') ? 'page' : undefined}
+            className={`text-sm transition-colors ${isActive('/courses')}`}
+          >
+            Courses
+          </Link>
+          {isAuthenticated && (
+            <Link
+              href="/dashboard"
+              aria-current={pathname.endsWith('/dashboard') ? 'page' : undefined}
+              className={`text-sm transition-colors ${isActive('/dashboard')}`}
+            >
+              Dashboard
+            </Link>
+          )}
           <LanguageSwitcher />
           <ThemeToggle />
           {isAuthenticated && user ? (
@@ -163,99 +155,11 @@ export function Navbar() {
           )}
         </div>
 
-        {/* Mobile hamburger */}
-        <button
-          className="sm:hidden p-2 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((o) => !o)}
-        >
-          {menuOpen ? (
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          ) : (
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            </svg>
-          )}
-        </button>
-      </div>
-
-      {/* Mobile menu */}
-      {menuOpen && (
-        <div className="sm:hidden border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex flex-col gap-3 bg-white dark:bg-gray-900">
-          {navLinks}
-          <div className="flex items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-            <LanguageSwitcher />
-            <ThemeToggle />
-          </div>
-          {isAuthenticated ? (
-            <>
-              <Link
-                href="/profile"
-                className="text-sm text-gray-700 dark:text-gray-200"
-                onClick={() => setMenuOpen(false)}
-              >
-                Profile
-              </Link>
-              <Link
-                href="/bookmarks"
-                className="text-sm text-gray-700 dark:text-gray-200"
-                onClick={() => setMenuOpen(false)}
-              >
-                Bookmarks
-              </Link>
-              <Link
-                href="/credentials"
-                className="text-sm text-gray-700 dark:text-gray-200"
-                onClick={() => setMenuOpen(false)}
-              >
-                Credentials
-              </Link>
-              <button
-                onClick={() => {
-                  logout();
-                  setMenuOpen(false);
-                }}
-                className="text-left text-sm text-red-600 dark:text-red-400"
-              >
-                Logout
-              </button>
-            </>
-          ) : (
-            <Link
-              href="/auth/login"
-              className="text-sm text-gray-700 dark:text-gray-200"
-              onClick={() => setMenuOpen(false)}
-            >
-              Login
-            </Link>
-          )}
+        {/* Mobile: slide-out drawer trigger */}
+        <div className="sm:hidden">
+          <MobileNav isAuthenticated={isAuthenticated} onLogout={logout} />
         </div>
-      )}
+      </div>
     </nav>
   );
 }
