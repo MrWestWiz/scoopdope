@@ -8,9 +8,11 @@ import {
   HttpHealthIndicator,
   HealthIndicatorResult,
 } from '@nestjs/terminus';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import { DataSource } from 'typeorm';
 import { Logger } from 'winston';
 import { ConfigService } from '@nestjs/config';
 import { HealthService } from './health.service';
