@@ -21,12 +21,28 @@ export class UsersService {
     return this.repo.findOne({ where: { email } });
   }
 
+  findByEmailWithPassword(email: string) {
+    return this.repo
+      .createQueryBuilder('user')
+      .where('user.email = :email', { email })
+      .addSelect('user.passwordHash')
+      .getOne();
+  }
+
   findByVerificationToken(hash: string) {
     return this.repo.findOne({ where: { verificationToken: hash } });
   }
 
   findById(id: string) {
     return this.repo.findOne({ where: { id } });
+  }
+
+  findByIdWithPassword(id: string) {
+    return this.repo
+      .createQueryBuilder('user')
+      .where('user.id = :id', { id })
+      .addSelect('user.passwordHash')
+      .getOne();
   }
 
   findByStellarPublicKey(stellarPublicKey: string) {

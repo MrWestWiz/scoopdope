@@ -24,6 +24,20 @@ export class PaymentsService {
     });
   }
 
+  /**
+   * Sanitize PaymentIntent for logging — only include non-sensitive fields
+   * Excludes: card details, billing address, customer email, etc. (PCI DSS requirement 3)
+   */
+  private sanitizePaymentIntent(intent: Stripe.PaymentIntent): Record<string, unknown> {
+    return {
+      id: intent.id,
+      status: intent.status,
+      amount: intent.amount,
+      currency: intent.currency,
+      created: intent.created,
+    };
+  }
+
   async createPaymentIntent(
     courseId: string,
     currency: SupportedCurrency,
@@ -90,7 +104,7 @@ export class PaymentsService {
     if (event.type === 'payment_intent.succeeded') {
       const intent = event.data.object as Stripe.PaymentIntent;
       this.logger.log(
-        `Payment succeeded for course ${intent.metadata.courseId} by user ${intent.metadata.userId}`,
+        `Payment succeeded: ${JSON.stringify(this.sanitizePaymentIntent(intent))}`,
       );
       // Enrollment logic can be triggered here via EventEmitter
     }
