@@ -47,6 +47,12 @@ jobs:
         run: npx jest --coverage --passWithNoTests
         working-directory: apps/backend
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+
       - name: Run Pact provider verification
         run: npm run test:pact --workspace=apps/backend
 
@@ -561,10 +567,22 @@ jobs:
         run: npm run test:coverage --workspace=apps/frontend
         continue-on-error: true
 
+      - name: Upload frontend coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: apps/frontend/coverage/lcov.info
+
       - name: Generate backend coverage
         run: npm run test --workspace=apps/backend -- --coverage
         working-directory: apps/backend
         continue-on-error: true
+
+      - name: Upload backend coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: apps/backend/coverage/lcov.info
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
