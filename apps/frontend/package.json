@@ -78,6 +78,7 @@
     "eslint-plugin-prettier": "^5.0.0",
     "eslint-plugin-react": "^7.34.0",
     "eslint-plugin-react-hooks": "^4.6.0",
+    "jest-axe": "^8.0.0",
     "jsdom": "^24.1.0",
     "msw": "^2.3.0",
     "prettier": "^3.0.0",
