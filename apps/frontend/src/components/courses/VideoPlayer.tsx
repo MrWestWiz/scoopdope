@@ -17,7 +17,17 @@ export function VideoPlayer({ src, lessonId, courseId, onComplete }: Props) {
   const [completed, setCompleted] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  useVideoShortcuts(videoRef);
+  // Screen-reader announcement text surfaced via aria-live
+  const [announcement, setAnnouncement] = useState('');
+
+  const announce = useCallback((msg: string) => {
+    // Clear then set so repeated identical messages still trigger the live region
+    setAnnouncement('');
+    // Defer to let the DOM see the empty string first
+    requestAnimationFrame(() => setAnnouncement(msg));
+  }, []);
+
+  useVideoShortcuts(videoRef, announce);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -98,14 +108,30 @@ export function VideoPlayer({ src, lessonId, courseId, onComplete }: Props) {
   }
 
   return (
-    <video
-      ref={videoRef}
-      src={videoSrc}
-      controls
-      onTimeUpdate={handleTimeUpdate}
-      onError={handleError}
-      className="w-full rounded-lg bg-black dark:bg-black"
-    />
+    // tabIndex makes the container focusable so keyboard shortcuts activate
+    // when the user tabs to the player without clicking inside it first.
+    <div
+      className="relative w-full"
+      tabIndex={0}
+      aria-label="Video player. Use Space to play/pause, arrow keys to seek and adjust volume, M to mute, F for fullscreen."
+    >
+      {/* aria-live region — visually hidden, announces shortcut actions to screen readers */}
+      <span
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {announcement}
+      </span>
+
+      <video
+        ref={videoRef}
+        src={videoSrc}
+        controls
+        onTimeUpdate={handleTimeUpdate}
+        onError={handleError}
+        className="w-full rounded-lg bg-black dark:bg-black"
+      />
+    </div>
   );
 }
-
