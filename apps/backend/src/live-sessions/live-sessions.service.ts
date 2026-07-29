@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nest
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { DistributedLockService } from '../common/distributed-lock.service';
 import { LiveSession, SessionStatus } from './live-session.entity';
 import { CohortMember } from '../cohorts/cohort-member.entity';
 import { User } from '../users/user.entity';
@@ -20,6 +21,7 @@ export class LiveSessionsService {
     @InjectRepository(User) private userRepo: Repository<User>,
     private emailService: EmailService,
     private config: ConfigService,
+    private readonly distributedLockService: DistributedLockService,
   ) {}
 
   findByCohort(cohortId: string): Promise<LiveSession[]> {
@@ -63,29 +65,36 @@ export class LiveSessionsService {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async sendReminders(): Promise<void> {
-    const now = new Date();
-    const upcoming = await this.repo.find({
-      where: { status: SessionStatus.SCHEDULED, scheduledAt: MoreThan(now) },
-    });
+    const lockKey = 'lock:cron:liveSessions:sendReminders';
+    const result = await this.distributedLockService.withLock(lockKey, async () => {
+      const now = new Date();
+      const upcoming = await this.repo.find({
+        where: { status: SessionStatus.SCHEDULED, scheduledAt: MoreThan(now) },
+      });
 
-    for (const session of upcoming) {
-      const msUntil = session.scheduledAt.getTime() - now.getTime();
-      const hoursUntil = msUntil / 3_600_000;
-      const sent = session.remindersSent ?? [];
+      for (const session of upcoming) {
+        const msUntil = session.scheduledAt.getTime() - now.getTime();
+        const hoursUntil = msUntil / 3_600_000;
+        const sent = session.remindersSent ?? [];
 
-      const toSend: string[] = [];
-      if (hoursUntil <= 24 && hoursUntil > 23 && !sent.includes('24h')) toSend.push('24h');
-      if (hoursUntil <= 1 && hoursUntil > 0 && !sent.includes('1h')) toSend.push('1h');
+        const toSend: string[] = [];
+        if (hoursUntil <= 24 && hoursUntil > 23 && !sent.includes('24h')) toSend.push('24h');
+        if (hoursUntil <= 1 && hoursUntil > 0 && !sent.includes('1h')) toSend.push('1h');
 
-      for (const label of toSend) {
-        await this.notifyMembers(session, label);
-        sent.push(label);
+        for (const label of toSend) {
+          await this.notifyMembers(session, label);
+          sent.push(label);
+        }
+
+        if (toSend.length) {
+          session.remindersSent = sent;
+          await this.repo.save(session);
+        }
       }
+    }, 60);
 
-      if (toSend.length) {
-        session.remindersSent = sent;
-        await this.repo.save(session);
-      }
+    if (result === null) {
+      this.logger.debug('Skipping live session reminders because another instance holds the lock');
     }
   }
 
