@@ -11,6 +11,7 @@ import {
   Request,
   ForbiddenException,
   NotFoundException,
+  Req,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -18,8 +19,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { BulkDeleteUserDto } from './dto/bulk-delete-user.dto';
 import { StellarService } from '../stellar/stellar.service';
 import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/audit-log.entity';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -172,7 +175,10 @@ export class UsersController {
 @Controller('admin/users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AdminUsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly auditService: AuditService,
+  ) {}
 
   @Get()
   @Roles('admin')
@@ -246,6 +252,57 @@ export class AdminUsersController {
     return this.usersService.banUser(id, isBanned);
   }
 
+  @Delete('bulk')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Bulk soft delete users with audit logging' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  @ApiResponse({
+    status: 200,
+    description: 'Bulk deletion completed with audit trail',
+    schema: { example: { data: {}, statusCode: 200, timestamp: '2024-01-01T00:00:00.000Z' } },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
+  async bulkDeleteUsers(
+    @Body() dto: BulkDeleteUserDto,
+    @Req() req: { user: { id: string }; ip: string; headers: Record<string, string> },
+  ) {
+    const results = await this.usersService.bulkSoftDelete(dto.ids);
+
+    // Log a per-user audit entry for each successfully deleted user
+    for (const deletedId of results.deleted) {
+      await this.auditService.log(
+        AuditAction.USER_DELETED,
+        req.user.id,
+        true,
+        { affectedId: deletedId, operation: 'bulk' },
+        req.ip,
+        req.headers?.['user-agent'],
+      );
+    }
+
+    // Log a summary audit entry for the bulk operation
+    await this.auditService.log(
+      AuditAction.USER_BULK_DELETED,
+      req.user.id,
+      true,
+      {
+        affectedIds: results.deleted,
+        failedIds: results.failed.map((f) => f.id),
+        totalRequested: dto.ids.length,
+      },
+      req.ip,
+      req.headers?.['user-agent'],
+    );
+
+    return {
+      message: `Bulk deletion completed: ${results.deleted.length} deleted, ${results.failed.length} failed`,
+      results,
+    };
+  }
+
   @Delete(':id')
   @Roles('admin')
   @ApiOperation({ summary: 'Soft delete a user' })
@@ -260,7 +317,21 @@ export class AdminUsersController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  deleteUser(@Param('id') id: string) {
-    return this.usersService.softDelete(id);
+  async deleteUser(
+    @Param('id') id: string,
+    @Req() req: { user: { id: string }; ip: string; headers: Record<string, string> },
+  ) {
+    const result = await this.usersService.softDelete(id);
+
+    await this.auditService.log(
+      AuditAction.USER_DELETED,
+      req.user.id,
+      true,
+      { affectedId: id },
+      req.ip,
+      req.headers?.['user-agent'],
+    );
+
+    return result;
   }
 }
