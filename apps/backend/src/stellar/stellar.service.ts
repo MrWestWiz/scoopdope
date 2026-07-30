@@ -20,7 +20,7 @@ const RETRY_OPTIONS = {
   retries: MAX_RETRIES,
   minTimeout: 1000,
   maxTimeout: 8000,
-  onFailedAttempt: (error: pRetry.FailedAttemptError) => {
+  onFailedAttempt: (error: any) => {
     Logger.warn(
       `Attempt ${error.attemptNumber}/${MAX_RETRIES} failed: ${error.message}`
     );
@@ -197,13 +197,14 @@ export class StellarService implements OnApplicationShutdown {
     }
 
     return this.trackTransaction(() =>
-      this.retryWithBackoff(() =>
+      pRetry(() =>
         this.invokeContract(this.certificateContractId, 'mint_certificate', [
           new Address(recipientPublicKey).toScVal(),
           nativeToScVal(certificateHash, { type: 'string' }),
           nativeToScVal(courseTitle, { type: 'string' }),
         ]),
-      ),
+        RETRY_OPTIONS
+      )
     );
   }
 

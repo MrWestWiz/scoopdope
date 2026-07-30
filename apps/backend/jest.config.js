@@ -12,7 +12,7 @@ module.exports = {
     }],
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@scure|@otplib|@noble|otplib)/)',
+    'node_modules/(?!(@scure|@otplib|@noble|otplib|p-retry|is-network-error|retry)/)',
   ],
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
