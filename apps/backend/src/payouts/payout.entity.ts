@@ -32,6 +32,9 @@ export class Payout {
   totalRevenue: number;
 
   @Column('decimal', { precision: 12, scale: 2 })
+  stripeFee: number;
+
+  @Column('decimal', { precision: 12, scale: 2 })
   platformFee: number;
 
   @Column('decimal', { precision: 12, scale: 2 })

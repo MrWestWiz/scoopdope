@@ -47,6 +47,10 @@ export class LiveSession {
   @Column({ default: 60 })
   durationMinutes: number;
 
+  /** Maximum number of participants allowed in this session */
+  @Column({ default: 100 })
+  maxCapacity: number;
+
   /** Zoom or Google Meet URL */
   @Column({ nullable: true })
   meetingUrl: string;
