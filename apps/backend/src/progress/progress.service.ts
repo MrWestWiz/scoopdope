@@ -68,13 +68,17 @@ export class ProgressService {
 
       await this.credentialsService.issue(userId, dto.courseId, stellarPublicKey);
 
-      // Emit event so CertificatesService can issue an on-chain certificate
-      this.eventEmitter.emit('progress.completed', {
+      // Emit event so CertificatesService can issue an on-chain certificate.
+      // `course.completed` is the canonical domain event; `progress.completed`
+      // is retained for backwards compatibility with existing listeners.
+      const completionPayload = {
         userId,
         courseId: dto.courseId,
         stellarPublicKey,
         courseName: dto.courseId, // enriched downstream via the enrollment relation
-      });
+      };
+      this.eventEmitter.emit('course.completed', completionPayload);
+      this.eventEmitter.emit('progress.completed', completionPayload);
 
       // Mint 50 BST to referrer on first course completion
       const completedCount = await this.repo.count({
