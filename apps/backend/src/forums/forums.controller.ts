@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -38,6 +39,25 @@ export class ForumsController {
   @ApiResponse({ status: 200, description: 'Returns course forum posts' })
   findByCourse(@Param('id') courseId: string) {
     return this.forumsService.findPostsByCourse(courseId);
+  }
+
+  @Get('forums/threads/:id')
+  @ApiOperation({ summary: 'Get a forum thread with paginated replies' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  @ApiResponse({ status: 200, description: 'Returns thread with paginated replies' })
+  getThread(
+    @Param('id') threadId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : 1;
+    const parsedLimit = limit ? parseInt(limit, 10) : 20;
+    return this.forumsService.getThread(threadId, parsedPage, parsedLimit);
   }
 
   @Post('courses/:id/posts')
