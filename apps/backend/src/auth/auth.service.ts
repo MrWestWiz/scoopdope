@@ -6,11 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import * as bcryptLib from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { PasswordResetToken } from './password-reset-token.entity';
+import { User } from '../users/user.entity';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/audit-log.entity';
 import { TokenService } from './token.service';
@@ -29,6 +30,7 @@ export class AuthService {
     private oauthService: OAuthService,
     @InjectRepository(PasswordResetToken)
     private resetTokenRepo: Repository<PasswordResetToken>,
+    private dataSource: DataSource,
   ) {}
 
   async register(email: string, password: string, refCode?: string) {
@@ -163,15 +165,34 @@ export class AuthService {
 
   async resetPassword(token: string, newPassword: string) {
     const hash = this.tokenService.hashToken(token);
-    const resetToken = await this.resetTokenRepo.findOne({ where: { tokenHash: hash, used: false } });
 
-    if (!resetToken) throw new BadRequestException('Invalid or expired reset token');
-    if (resetToken.expiresAt < new Date()) throw new BadRequestException('Reset token has expired');
+    // Wrap token validation, password update, and token deletion in a single
+    // transaction so that concurrent use of the same token is detected.
+    const userId = await this.dataSource.transaction(async (manager) => {
+      const resetTokenRepo = manager.getRepository(PasswordResetToken);
+      const userRepo = manager.getRepository(User);
 
-    const passwordHash = await bcryptLib.hash(newPassword, 10);
-    await this.usersService.update(resetToken.userId, { passwordHash });
-    await this.resetTokenRepo.save({ ...resetToken, used: true });
-    await this.auditService.log(AuditAction.PASSWORD_RESET_COMPLETE, resetToken.userId, true);
+      const resetToken = await resetTokenRepo.findOne({
+        where: { tokenHash: hash, used: false },
+      });
+
+      if (!resetToken) throw new BadRequestException('Invalid or expired reset token');
+      if (resetToken.expiresAt < new Date()) throw new BadRequestException('Reset token has expired');
+
+      const passwordHash = await bcryptLib.hash(newPassword, 10);
+      await userRepo.update(resetToken.userId, { passwordHash });
+
+      // Delete the token row immediately after use. If another request already
+      // consumed it, affected will be 0 and we reject the second attempt.
+      const deleteResult = await resetTokenRepo.delete({ id: resetToken.id });
+      if (deleteResult.affected === 0) {
+        throw new BadRequestException('This reset token has already been used');
+      }
+
+      return resetToken.userId;
+    });
+
+    await this.auditService.log(AuditAction.PASSWORD_RESET_COMPLETE, userId, true);
     return { message: 'Password reset successfully. You can now log in.' };
   }
 
