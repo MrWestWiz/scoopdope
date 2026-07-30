@@ -17,6 +17,7 @@ export class Payout {
   @Column()
   instructorId: string;
 
+  // Why: financial payout records are removed with the instructor; consider SET NULL to preserve accounting history for audit.
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'instructorId' })
   instructor: User;
@@ -24,6 +25,7 @@ export class Payout {
   @Column()
   courseId: string;
 
+  // Why: payout history is removed with the course; consider SET NULL to retain financial records for auditing.
   @ManyToOne(() => Course, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'courseId' })
   course: Course;

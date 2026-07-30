@@ -24,6 +24,7 @@ export class LiveSession {
   @Column()
   cohortId: string;
 
+  // Why: live sessions are tied to a cohort; deleting the cohort removes its scheduled sessions.
   @ManyToOne(() => Cohort, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'cohortId' })
   cohort: Cohort;
@@ -31,6 +32,7 @@ export class LiveSession {
   @Column()
   instructorId: string;
 
+  // Why: instructor deletion removes scheduled sessions; consider SET NULL to preserve sessions for enrolled students.
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'instructorId' })
   instructor: User;
