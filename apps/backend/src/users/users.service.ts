@@ -3,12 +3,30 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
 
+export interface ExportedUserData {
+  profile: Partial<User>;
+  enrollments: any[];
+  certificates: any[];
+  credentials: any[];
+  auditLogs: any[];
+}
+
 @Injectable()
 export class UsersService {
-  constructor(@InjectRepository(User) private repo: Repository<User>) {}
+  constructor(
+    @InjectRepository(User) private repo: Repository<User>,
+  ) {}
 
   findByEmail(email: string) {
     return this.repo.findOne({ where: { email } });
+  }
+
+  findByEmailWithPassword(email: string) {
+    return this.repo
+      .createQueryBuilder('user')
+      .where('user.email = :email', { email })
+      .addSelect('user.passwordHash')
+      .getOne();
   }
 
   findByVerificationToken(hash: string) {
@@ -17,6 +35,14 @@ export class UsersService {
 
   findById(id: string) {
     return this.repo.findOne({ where: { id } });
+  }
+
+  findByIdWithPassword(id: string) {
+    return this.repo
+      .createQueryBuilder('user')
+      .where('user.id = :id', { id })
+      .addSelect('user.passwordHash')
+      .getOne();
   }
 
   findByStellarPublicKey(stellarPublicKey: string) {
@@ -102,5 +128,42 @@ export class UsersService {
   async getReferralStats(userId: string) {
     const count = await this.repo.count({ where: { referredBy: userId } });
     return { referralCount: count, earnedBst: count * 50 };
+  }
+
+  async exportUserData(id: string): Promise<ExportedUserData> {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+
+    const { passwordHash, mfaSecret, mfaBackupCodes, verificationToken, ...safeProfile } = user;
+
+    return {
+      profile: safeProfile,
+      enrollments: [],
+      certificates: [],
+      credentials: [],
+      auditLogs: [],
+    };
+  }
+
+  async anonymizeUser(id: string): Promise<void> {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+
+    const anonymizedEmail = `deleted-${id.slice(0, 8)}@anonymized.invalid`;
+    const anonymizedUsername = `deleted-user-${id.slice(0, 8)}`;
+
+    await this.repo.save({
+      ...user,
+      email: anonymizedEmail,
+      username: anonymizedUsername,
+      passwordHash: '',
+      avatar: null,
+      bio: null,
+      stellarPublicKey: null,
+      referralCode: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      deletedAt: new Date(),
+    });
   }
 }

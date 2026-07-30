@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 import { StellarService } from './stellar.service';
@@ -17,6 +17,12 @@ export class StellarController {
 
   @Get('network-status')
   @ApiOperation({ summary: 'Get Stellar network health status' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({ status: 200, description: 'Returns network health metrics' })
   getNetworkStatus() {
     return this.networkMonitorService.getNetworkStatus();
@@ -24,13 +30,40 @@ export class StellarController {
 
   @Get('balance/:publicKey')
   @ApiOperation({ summary: 'Get Stellar account balance' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({ status: 200, description: 'Returns account balances' })
   getBalance(@Param('publicKey') publicKey: string) {
     return this.stellarService.getAccountBalance(publicKey);
   }
 
+  @Get('transactions/:publicKey')
+  @ApiOperation({ summary: 'Get recent Stellar transactions for an account' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  @ApiResponse({ status: 200, description: 'Returns recent transactions' })
+  getTransactions(
+    @Param('publicKey') publicKey: string,
+    @Query('limit') limit?: string
+  ) {
+    return this.stellarService.getTransactions(publicKey, limit ? parseInt(limit, 10) : 10);
+  }
+
   @Post('fund-testnet')
   @ApiOperation({ summary: 'Fund a testnet account via Friendbot (testnet only)' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({ status: 201, description: 'Account funded successfully' })
   @ApiResponse({ status: 400, description: 'Not available on mainnet or Friendbot error' })
   async fundTestnet(@Body() body: { publicKey: string }) {
@@ -43,6 +76,10 @@ export class StellarController {
   @Roles('admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Mint a credential NFT' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiBody({ schema: { example: { recipientPublicKey: 'GABC...', courseId: 'uuid' } } })
   @ApiResponse({
     status: 201,
@@ -69,6 +106,10 @@ export class CredentialsController {
   @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Roles('admin')
   @ApiOperation({ summary: 'Issue a credential for course completion' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiBody({ schema: { example: { recipientPublicKey: 'GABC...', courseId: 'uuid' } } })
   @ApiResponse({
     status: 201,

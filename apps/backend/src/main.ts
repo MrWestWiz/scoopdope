@@ -14,10 +14,61 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { MetricsInterceptor } from './metrics/metrics.interceptor';
 import { MetricsService } from './metrics/metrics.service';
+import { AppDataSource } from './data-source';
+
+async function runMigrationCommand(command: string) {
+  const logger = new Logger('MigrationCommand');
+
+  try {
+    await AppDataSource.initialize();
+    logger.log('DataSource initialized');
+
+    switch (command) {
+      case 'migration:run': {
+        const migrations = await AppDataSource.runMigrations();
+        if (migrations.length === 0) {
+          logger.log('No pending migrations.');
+        } else {
+          logger.log(`Executed ${migrations.length} migration(s):`);
+          migrations.forEach((m) => logger.log(`  ${m.name}`));
+        }
+        break;
+      }
+      case 'migration:revert': {
+        const reverted = await AppDataSource.undoLastMigration();
+        if (reverted) {
+          logger.log(`Reverted: ${reverted.name}`);
+        } else {
+          logger.log('Nothing to revert.');
+        }
+        break;
+      }
+      default:
+        logger.error(`Unknown migration command: ${command}`);
+        process.exit(1);
+    }
+
+    await AppDataSource.destroy();
+    process.exit(0);
+  } catch (error) {
+    logger.error(`Migration command "${command}" failed: ${error}`);
+    process.exit(1);
+  }
+}
 
 async function bootstrap() {
+  const migrationCommand = process.argv
+    .slice(2)
+    .find((a) => a.startsWith('migration:'));
+
+  if (migrationCommand) {
+    await runMigrationCommand(migrationCommand);
+    return;
+  }
+
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.enableShutdownHooks();
   const configService = app.get(ConfigService);
 
   const port = configService.get<number>('port');
@@ -45,10 +96,29 @@ async function bootstrap() {
     maxAge: corsPreflight,
   });
 
+  const v1Info = getVersionInfo('v1');
+
   const config = new DocumentBuilder()
     .setTitle('scoopdope API')
     .setDescription(
       'Blockchain education platform API powered by Stellar\n\n' +
+        '## API Versioning\n\n' +
+        'This API uses **URL-based versioning**. All requests must include the version prefix.\n\n' +
+        `Current version: **${LATEST_API_VERSION}** | Supported: ${API_VERSIONS.join(', ')}\n\n` +
+        '### Version Headers\n\n' +
+        '| Header | Description |\n' +
+        '|--------|-------------|\n' +
+        `| \`${API_VERSION_HEADER}\` | Request a specific version (e.g., \`v1\`) |\n` +
+        '| `X-API-Version` | Response header indicating the served version |\n' +
+        '| `X-API-Deprecated` | Response header warning about deprecation |\n' +
+        '| `X-API-Sunset` | Response header with sunset date for deprecated versions |\n\n' +
+        '### Versioning Policy\n\n' +
+        '- Backward-compatible changes (new fields, new endpoints) are additive within a version\n' +
+        '- Breaking changes trigger a new version (e.g., v2)\n' +
+        '- Deprecated versions receive a **90-day** sunset window before removal\n' +
+        '- Clients should monitor `X-API-Version` and `X-API-Deprecated` response headers\n\n' +
+        '📖 **Full versioning policy, deprecation timeline, and migration guide:** ' +
+        '[docs/api-versioning.md](https://github.com/augustina-jpg/scoopdope/blob/main/docs/api-versioning.md)\n\n' +
         '## Authentication\n\n' +
         'This API uses JWT Bearer tokens for authentication.\n\n' +
         '### Getting Started\n\n' +
@@ -82,13 +152,13 @@ async function bootstrap() {
       'JWT-auth'
     )
     .addApiKey({ type: 'apiKey', in: 'header', name: 'X-API-KEY' }, 'X-API-KEY')
-    .addServer('/v1', 'API v1')
+    .addServer(`/${LATEST_API_VERSION}`, `API ${LATEST_API_VERSION} (latest)`)
+    .addServer(`/${DEFAULT_API_VERSION}`, `API ${DEFAULT_API_VERSION} (default)`)
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  // Export OpenAPI spec for static hosting
   if (process.env.EXPORT_OPENAPI === 'true' || process.argv.includes('--export-openapi')) {
     const outputPath = join(__dirname, '..', 'openapi.json');
     writeFileSync(outputPath, JSON.stringify(document, null, 2));

@@ -1,56 +1,54 @@
 import { Injectable, CanActivate, ExecutionContext, HttpException, HttpStatus } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { UserRateLimitService } from './user-rate-limit.service';
+import { RATE_LIMIT_METADATA, RateLimitConfig } from './rate-limit.constants';
 
 @Injectable()
 export class UserRateLimitGuard implements CanActivate {
-  constructor(private rateLimitService: UserRateLimitService) {}
+  constructor(
+    private readonly rateLimitService: UserRateLimitService,
+    private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
 
-    // Skip rate limiting for trusted clients
-    if (request.user?.isTrusted) {
-      return true;
-    }
+    const userId: string | null = request.user?.id || null;
+    const ip: string =
+      request.ip ||
+      request.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+      request.connection?.remoteAddress ||
+      'unknown';
+    const userRole: string | undefined = request.user?.role;
+    const authenticated = !!request.user?.id;
 
-    // Skip if no user (public endpoints)
-    if (!request.user?.id) {
-      return true;
-    }
+    const overrideConfig = this.reflector.get<Partial<RateLimitConfig> | undefined>(
+      RATE_LIMIT_METADATA,
+      context.getHandler(),
+    );
 
-    const userId = request.user.id;
-    const role = request.user.role || 'GUEST';
+    const role = this.rateLimitService.resolveRole(userRole, authenticated);
 
-    const allowed = await this.rateLimitService.checkRateLimit(userId, role);
+    const allowed = await this.rateLimitService.checkRateLimit(userId, ip, role, overrideConfig);
 
-    if (!allowed) {
-      const status = await this.rateLimitService.getRateLimitStatus(userId, role);
-      response.set({
-        'X-RateLimit-Limit': status.limit.toString(),
-        'X-RateLimit-Remaining': status.remaining.toString(),
-        'X-RateLimit-Reset': status.resetTime.toISOString(),
-      });
-
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message: 'Rate limit exceeded',
-          retryAfter: status.resetTime,
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-        {
-          cause: new Error('Rate limit exceeded'),
-        }
-      );
-    }
-
-    const status = await this.rateLimitService.getRateLimitStatus(userId, role);
+    const status = await this.rateLimitService.getRateLimitStatus(userId, ip, role, overrideConfig);
     response.set({
       'X-RateLimit-Limit': status.limit.toString(),
       'X-RateLimit-Remaining': status.remaining.toString(),
       'X-RateLimit-Reset': status.resetTime.toISOString(),
     });
+
+    if (!allowed) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          message: 'Rate limit exceeded. Please slow down your requests.',
+          retryAfter: status.resetTime.toISOString(),
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
 
     return true;
   }

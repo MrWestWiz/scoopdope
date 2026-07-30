@@ -29,6 +29,8 @@ export class ModerationService {
   private readonly comprehend: ComprehendClient;
   private readonly toxicityThreshold: number;
 
+  private readonly AUTO_HIDE_THRESHOLD: number;
+
   constructor(
     @InjectRepository(ModerationItem)
     private readonly itemRepo: Repository<ModerationItem>,
@@ -44,6 +46,7 @@ export class ModerationService {
       },
     });
     this.toxicityThreshold = this.config.get<number>('moderation.toxicityThreshold') || 0.7;
+    this.AUTO_HIDE_THRESHOLD = this.config.get<number>('moderation.autoHideThreshold') || 5;
   }
 
   /** Auto-moderate content via AWS Comprehend. Returns true if content was flagged. */
@@ -92,7 +95,18 @@ export class ModerationService {
     const existing = await this.itemRepo.findOne({
       where: { contentType: dto.contentType, contentId: dto.contentId, status: ModerationStatus.PENDING },
     });
-    if (existing) return existing;
+
+    if (existing) {
+      existing.flagCount += 1;
+      if (!existing.isHidden && existing.flagCount >= this.AUTO_HIDE_THRESHOLD) {
+        existing.isHidden = true;
+        existing.status = ModerationStatus.HIDDEN;
+        await this.itemRepo.save(existing);
+        await this.log(existing.id, dto.contentType, dto.contentId, ModerationAction.AUTO_HIDE, null, `Auto-hidden after ${existing.flagCount} flags`);
+        return existing;
+      }
+      return this.itemRepo.save(existing);
+    }
 
     const item = this.itemRepo.create({
       contentType: dto.contentType,
@@ -100,10 +114,18 @@ export class ModerationService {
       reportedByUserId: userId,
       status: ModerationStatus.PENDING,
       flagReason: dto.reason ?? null,
+      flagCount: 1,
+      isHidden: false,
     });
     const saved = await this.itemRepo.save(item);
     await this.log(saved.id, dto.contentType, dto.contentId, ModerationAction.FLAG, userId, dto.reason);
     return saved;
+  }
+
+  /** Check if content is hidden */
+  async isContentHidden(contentType: ContentType, contentId: string): Promise<boolean> {
+    const item = await this.itemRepo.findOne({ where: { contentType, contentId, isHidden: true } });
+    return !!item;
   }
 
   /** Get moderation queue (admin only) */

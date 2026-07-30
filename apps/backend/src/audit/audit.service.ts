@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { LessThan, Repository } from 'typeorm';
 import { AuditLog, AuditAction } from './audit-log.entity';
 import { CustomLoggerService } from '../common/logger/logger.service';
+
+const RETENTION_DAYS = 90;
 
 @Injectable()
 export class AuditService {
@@ -22,17 +25,10 @@ export class AuditService {
     userAgent?: string,
   ): Promise<void> {
     try {
-      await this.auditRepo.save({
-        action,
-        userId,
-        success,
-        metadata,
-        ipAddress,
-        userAgent,
-      });
-      this.logger.info(`Audit: ${action}`, { userId, success, metadata });
+      await this.auditRepo.save({ action, userId, success, metadata, ipAddress, userAgent });
+      this.logger.info(`Audit: ${action}`, { userId, success, metadata } as any);
     } catch (err) {
-      this.logger.error('Failed to write audit log', err);
+      this.logger.error('Failed to write audit log', err as any);
     }
   }
 
@@ -50,5 +46,13 @@ export class AuditService {
     if (filters.endDate) qb.andWhere('log.createdAt <= :end', { end: filters.endDate });
     qb.orderBy('log.createdAt', 'DESC').limit(filters.limit || 100);
     return qb.getMany();
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async purgeOldLogs(): Promise<void> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
+    const { affected } = await this.auditRepo.delete({ createdAt: LessThan(cutoff) });
+    this.logger.info(`Audit retention: purged ${affected ?? 0} logs older than ${RETENTION_DAYS} days`);
   }
 }

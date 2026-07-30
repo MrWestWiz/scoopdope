@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Param,
   Query,
   Patch,
@@ -18,6 +19,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { StellarService } from '../stellar/stellar.service';
+import { AuditService } from '../audit/audit.service';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -25,12 +27,21 @@ import { StellarService } from '../stellar/stellar.service';
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
-    private readonly stellarService: StellarService
+    private readonly stellarService: StellarService,
+    private readonly auditService: AuditService,
   ) {}
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @Get('admin-only')
+  @ApiOperation({ summary: 'Admin-only test endpoint' })
+  @ApiResponse({ status: 200, description: 'Admin access confirmed' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   adminOnly() {
     return { message: 'Admin access granted' };
   }
@@ -38,6 +49,12 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({ status: 200, description: 'Returns current user data' })
   async getMe(@Request() req: { user: { id: string } }) {
     return this.usersService.findById(req.user.id);
@@ -45,6 +62,11 @@ export class UsersController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get user by ID' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({
     status: 200,
     description: 'Returns user data',
@@ -58,6 +80,11 @@ export class UsersController {
   @Get(':id/token-balance')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get BST token balance for a user' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({
     status: 200,
     description: 'Returns BST token balance',
@@ -76,12 +103,26 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @Get(':id/referrals')
   @ApiOperation({ summary: 'Get referral count and earned BST for a user' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   getReferrals(@Param('id') id: string) {
     return this.usersService.getReferralStats(id);
   }
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
+  @ApiOperation({ summary: 'Update user profile' })
+  @ApiResponse({ status: 200, description: 'User updated successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
@@ -91,6 +132,38 @@ export class UsersController {
       throw new ForbiddenException('You can only update your own profile');
     }
     return this.usersService.update(id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('me/export')
+  @ApiOperation({ summary: 'Export all personal data (GDPR)' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  @ApiResponse({ status: 200, description: 'Returns all user data in JSON format' })
+  async exportData(@Request() req: { user: { id: string } }) {
+    const data = await this.usersService.exportUserData(req.user.id);
+    await this.auditService.log('gdpr.data_export', req.user.id, true);
+    return data;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('me/account')
+  @ApiOperation({ summary: 'Delete account and anonymize personal data (GDPR)' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  @ApiResponse({ status: 200, description: 'Account deletion initiated' })
+  async deleteAccount(@Request() req: { user: { id: string } }) {
+    await this.usersService.anonymizeUser(req.user.id);
+    await this.auditService.log('gdpr.account_deletion', req.user.id, true);
+    return { message: 'Account deletion initiated. Your personal data has been anonymized.' };
   }
 }
 
@@ -104,6 +177,10 @@ export class AdminUsersController {
   @Get()
   @Roles('admin')
   @ApiOperation({ summary: 'Get all users with filtering and pagination' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({
     status: 200,
     description: 'Returns paginated users',
@@ -136,6 +213,9 @@ export class AdminUsersController {
   @Patch(':id/role')
   @Roles('admin')
   @ApiOperation({ summary: 'Change user role' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({
     status: 200,
     description: 'Role updated successfully',
@@ -151,6 +231,9 @@ export class AdminUsersController {
   @Patch(':id/ban')
   @Roles('admin')
   @ApiOperation({ summary: 'Ban or unban a user' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({
     status: 200,
     description: 'User ban status updated',
@@ -166,6 +249,9 @@ export class AdminUsersController {
   @Delete(':id')
   @Roles('admin')
   @ApiOperation({ summary: 'Soft delete a user' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({
     status: 200,
     description: 'User deleted successfully',

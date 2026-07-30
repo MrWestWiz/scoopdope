@@ -71,6 +71,35 @@
     "empty": "No bookmarks yet.",
     "browseCourses": "Browse courses →"
   },
+  "gdpr": {
+    "title": "Privacy & Data",
+    "description": "Manage your personal data in compliance with GDPR. You can export all data we hold about you or request account deletion.",
+    "exportData": "Export My Data",
+    "exporting": "Exporting…",
+    "exported": "Exported ✓",
+    "exportError": "Failed to export data. Please try again.",
+    "deleteAccount": "Delete Account",
+    "confirmTitle": "Delete Your Account",
+    "confirmDescription": "This action is irreversible. All your personal data will be anonymized and your account will be permanently disabled. You will lose access to your courses, credentials, and wallet.",
+    "typeConfirm": "Type {phrase} to confirm",
+    "confirmDelete": "Permanently Delete",
+    "deleting": "Deleting…",
+    "deleteSuccess": "Your account has been scheduled for deletion. You will be redirected shortly.",
+    "deleteError": "Failed to delete account. Please try again.",
+    "cancel": "Cancel",
+    "redirecting": "Redirecting to homepage…"
+  },
+  "video": {
+    "loading": "Loading video…",
+    "completed": "Lesson completed"
+  },
+  "vesting": {
+    "title": "Vesting Schedule",
+    "total": "Total: {amount}",
+    "cliffLedger": "Cliff ledger: {ledger}",
+    "endLedger": "End ledger: {ledger}",
+    "locked": "Locked"
+  },
   "shortcuts": {
     "title": "Keyboard Shortcuts",
     "navigation": "Navigation",
