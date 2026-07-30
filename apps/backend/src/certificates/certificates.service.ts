@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Certificate } from './certificate.entity';
@@ -100,6 +100,17 @@ export class CertificatesService {
 
     if (!cert) {
       return { valid: false };
+    }
+
+    if (cert.revokedAt) {
+      throw new HttpException(
+        {
+          valid: false,
+          reason: 'revoked',
+          revokedAt: cert.revokedAt,
+        },
+        HttpStatus.GONE,
+      );
     }
 
     return {
