@@ -6,6 +6,7 @@ import { DistributedLockService } from '../common/distributed-lock.service';
 import { LiveSession, SessionStatus } from './live-session.entity';
 import { CohortMember } from '../cohorts/cohort-member.entity';
 import { User } from '../users/user.entity';
+import { SessionJoin } from './session-join.entity';
 import { CreateLiveSessionDto, UpdateLiveSessionDto } from './live-session.dto';
 import { EmailService } from '../email/email.service';
 import { emailTemplates } from '../email/email.templates';
@@ -19,6 +20,7 @@ export class LiveSessionsService {
     @InjectRepository(LiveSession) private repo: Repository<LiveSession>,
     @InjectRepository(CohortMember) private memberRepo: Repository<CohortMember>,
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(SessionJoin) private joinRepo: Repository<SessionJoin>,
     private emailService: EmailService,
     private config: ConfigService,
     private readonly distributedLockService: DistributedLockService,
@@ -59,6 +61,59 @@ export class LiveSessionsService {
     if (session.instructorId !== instructorId) throw new ForbiddenException();
     session.status = SessionStatus.CANCELLED;
     return this.repo.save(session);
+  }
+
+  // ── Session Joining ────────────────────────────────────────────────────────
+
+  async joinSession(sessionId: string, userId: string): Promise<SessionJoin> {
+    // Verify session exists and is not cancelled
+    const session = await this.findOne(sessionId);
+    if (session.status === SessionStatus.CANCELLED) {
+      throw new ForbiddenException('This session has been cancelled');
+    }
+
+    // Check if user is enrolled in the cohort
+    const isMember = await this.memberRepo.findOne({
+      where: { cohortId: session.cohortId, userId },
+    });
+    if (!isMember) {
+      throw new ForbiddenException('You are not enrolled in this cohort');
+    }
+
+    // Check capacity
+    const currentAttendees = await this.joinRepo.count({
+      where: { sessionId },
+    });
+    if (currentAttendees >= session.maxCapacity) {
+      throw new ForbiddenException(
+        `Session is at full capacity (${session.maxCapacity}/${session.maxCapacity})`,
+      );
+    }
+
+    // Check if user already joined (idempotent)
+    let join = await this.joinRepo.findOne({
+      where: { sessionId, userId },
+    });
+    if (join) {
+      return join; // Already joined, return existing record
+    }
+
+    // Create join record
+    join = this.joinRepo.create({
+      sessionId,
+      userId,
+      joinToken: `join-token-${sessionId}-${userId}-${Date.now()}`,
+    });
+
+    return this.joinRepo.save(join);
+  }
+
+  async getSessionAttendees(sessionId: string): Promise<SessionJoin[]> {
+    return this.joinRepo.find({
+      where: { sessionId },
+      relations: ['user'],
+      order: { joinedAt: 'ASC' },
+    });
   }
 
   // ── Reminders ─────────────────────────────────────────────────────────────

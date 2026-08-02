@@ -94,6 +94,15 @@ export default function CoursesPage() {
           </div>
         )}
 
+        {/* Announce result count to screen readers whenever results change */}
+        {!isLoading && (
+          <div aria-live="polite" aria-atomic="true" className="sr-only">
+            {query
+              ? `${courses.length} course${courses.length !== 1 ? 's' : ''} found for "${query}"`
+              : `${courses.length} course${courses.length !== 1 ? 's' : ''} found`}
+          </div>
+        )}
+
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" role="grid" aria-label="Courses list">
           {isLoading
             ? Array.from({ length: 6 }).map((_, i) => <CourseSkeletonCard key={i} />)

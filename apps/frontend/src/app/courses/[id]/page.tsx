@@ -13,7 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCompareStore } from '@/store/compare.store';
 import api from '@/lib/api';
 import { toast } from '@/lib/toast';
-import { PlayCircle, Lock, Calendar, CheckCircle, Circle, AlertTriangle } from 'lucide-react';
+import { PlayCircle, Lock, Calendar, CheckCircle, CheckCircle2, Circle, AlertTriangle } from 'lucide-react';
 
 interface CourseDetailPageProps {
   params: { id: string };
@@ -52,6 +52,8 @@ interface PrerequisiteStatus {
   prerequisites: Prerequisite[];
 }
 
+type ModuleProgressMap = Record<string, { completed: boolean; lessonProgress: Record<string, boolean> }>;
+
 export default function CourseDetailPage({ params }: CourseDetailPageProps) {
   const [tab, setTab] = useState<'overview' | 'curriculum' | 'reviews' | 'qa' | 'announcements' | 'assignments' | 'forum'>('overview');
   const [reviewsKey, setReviewsKey] = useState(0);
@@ -62,6 +64,7 @@ export default function CourseDetailPage({ params }: CourseDetailPageProps) {
   const [enrolling, setEnrolling] = useState(false);
   const [prereqStatus, setPrereqStatus] = useState<PrerequisiteStatus | null>(null);
   const [prereqLoading, setPrereqLoading] = useState(true);
+  const [moduleProgress, setModuleProgress] = useState<ModuleProgressMap>({});
   const { user } = useAuth();
   const { clear: clearCompare } = useCompareStore();
 
@@ -117,6 +120,8 @@ export default function CourseDetailPage({ params }: CourseDetailPageProps) {
           })
         );
         setModules(modulesWithLessons);
+        // Pass fresh module data to progress fetch — avoids stale closure
+        if (user) await fetchProgress(modulesWithLessons);
       } catch (error) {
         console.error('Failed to fetch course curriculum:', error);
       }
@@ -131,6 +136,44 @@ export default function CourseDetailPage({ params }: CourseDetailPageProps) {
         setPrereqStatus(null);
       } finally {
         setPrereqLoading(false);
+      }
+    }
+
+    async function fetchProgress(currentModules: CourseModule[]) {
+      if (!user) return;
+      try {
+        const { data } = await api.get<Array<{ courseId: string; lessonId: string; progressPct: number; completedAt: string | null }>>(`/users/${user.id}/progress`);
+        // Filter progress for this course only
+        const courseProgress = (data ?? []).filter((p: any) => p.courseId === courseId);
+
+        // Track which lessons are completed
+        const completedLessons = new Set(
+          courseProgress
+            .filter((p: any) => p.progressPct >= 100)
+            .map((p: any) => p.lessonId)
+        );
+
+        // Build progress map per module from the passed-in module data
+        const progressMap: ModuleProgressMap = {};
+        currentModules.forEach((mod) => {
+          const modLessonIds = (mod.lessons ?? []).map((l) => l.id);
+          const lessonProgress: Record<string, boolean> = {};
+          let completedCount = 0;
+          modLessonIds.forEach((lessonId) => {
+            const isCompleted = completedLessons.has(lessonId);
+            lessonProgress[lessonId] = isCompleted;
+            if (isCompleted) completedCount++;
+          });
+
+          progressMap[mod.id] = {
+            completed: modLessonIds.length > 0 && completedCount === modLessonIds.length,
+            lessonProgress,
+          };
+        });
+
+        setModuleProgress(progressMap);
+      } catch {
+        // Progress data unavailable — modules render without checkmarks
       }
     }
 
@@ -296,52 +339,101 @@ export default function CourseDetailPage({ params }: CourseDetailPageProps) {
           {user && !isInstructor && (
             <ProgressTracker courseId={courseId} />
           )}
-          {modules.map((mod) => (
-            <div key={mod.id} className="space-y-3">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-lg">{mod.title}</h3>
-                {mod.isLocked ? (
-                  <span className="flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded-full">
-                    <Lock className="w-3 h-3" />
-                    {mod.releaseDate
-                      ? `Unlocks ${new Date(mod.releaseDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
-                      : 'Locked'}
-                  </span>
-                ) : mod.releaseDate ? (
-                  <span className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full">
-                    <Calendar className="w-3 h-3" />
-                    Released {new Date(mod.releaseDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                ) : null}
-              </div>
-              {mod.isLocked ? (
-                <div className="p-4 bg-gray-50 dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                  <Lock className="w-4 h-4 shrink-0" />
-                  This module will be available on{' '}
-                  {mod.releaseDate
-                    ? new Date(mod.releaseDate).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })
-                    : 'a future date'}
-                  .
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {mod.lessons?.map((lesson: Lesson) => (
-                    <Link
-                      key={lesson.id}
-                      href={`/courses/${courseId}/lesson/${lesson.id}`}
-                      className="flex items-center justify-between p-4 bg-white dark:bg-gray-900 border dark:border-gray-800 rounded-lg hover:border-blue-500 transition-colors"
+          {modules.map((mod) => {
+            const modProgress = moduleProgress[mod.id];
+            const isModuleCompleted = modProgress?.completed ?? false;
+
+            return (
+              <div key={mod.id} className="space-y-3">
+                <div className="flex items-center gap-2">
+                  {/* Completion checkmark */}
+                  {user && !mod.isLocked && (
+                    <span
+                      aria-hidden={!isModuleCompleted}
+                      title={isModuleCompleted ? 'Completed' : undefined}
                     >
-                      <div className="flex items-center gap-3">
-                        <PlayCircle className="w-5 h-5 text-blue-500" />
-                        <span className="font-medium">{lesson.title}</span>
-                      </div>
-                      <span className="text-sm text-gray-500">{lesson.durationMinutes} min</span>
-                    </Link>
-                  ))}
+                      {isModuleCompleted ? (
+                        <CheckCircle2
+                          className="w-5 h-5 text-green-500 shrink-0"
+                          aria-label="Completed"
+                        />
+                      ) : (
+                        <Circle className="w-5 h-5 text-gray-300 dark:text-gray-600 shrink-0" />
+                      )}
+                    </span>
+                  )}
+                  <h3
+                    className={`font-bold text-lg ${
+                      isModuleCompleted ? 'text-green-700 dark:text-green-400' : ''
+                    }`}
+                  >
+                    {mod.title}
+                  </h3>
+                  {mod.isLocked ? (
+                    <span className="flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded-full">
+                      <Lock className="w-3 h-3" />
+                      {mod.releaseDate
+                        ? `Unlocks ${new Date(mod.releaseDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+                        : 'Locked'}
+                    </span>
+                  ) : mod.releaseDate ? (
+                    <span className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full">
+                      <Calendar className="w-3 h-3" />
+                      Released {new Date(mod.releaseDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  ) : null}
                 </div>
-              )}
-            </div>
-          ))}
+                {mod.isLocked ? (
+                  <div className="p-4 bg-gray-50 dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                    <Lock className="w-4 h-4 shrink-0" />
+                    This module will be available on{' '}
+                    {mod.releaseDate
+                      ? new Date(mod.releaseDate).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })
+                      : 'a future date'}
+                    .
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {mod.lessons?.map((lesson: Lesson) => {
+                      const isLessonCompleted = modProgress?.lessonProgress[lesson.id] ?? false;
+                      return (
+                        <Link
+                          key={lesson.id}
+                          href={`/courses/${courseId}/lesson/${lesson.id}`}
+                          className={`flex items-center justify-between p-4 bg-white dark:bg-gray-900 border rounded-lg transition-colors ${
+                            isLessonCompleted
+                              ? 'border-green-200 dark:border-green-900/50 hover:border-green-400'
+                              : 'border-gray-200 dark:border-gray-800 hover:border-blue-500'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            {isLessonCompleted ? (
+                              <CheckCircle2
+                                className="w-5 h-5 text-green-500 shrink-0"
+                                aria-label="Completed"
+                              />
+                            ) : (
+                              <PlayCircle className="w-5 h-5 text-blue-500 shrink-0" />
+                            )}
+                            <span
+                              className={`font-medium ${
+                                isLessonCompleted
+                                  ? 'text-green-700 dark:text-green-400'
+                                  : 'text-gray-900 dark:text-gray-100'
+                              }`}
+                            >
+                              {lesson.title}
+                            </span>
+                          </div>
+                          <span className="text-sm text-gray-500">{lesson.durationMinutes} min</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

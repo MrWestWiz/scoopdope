@@ -12,11 +12,16 @@ interface Props {
 
 const storageKey = (lessonId: string) => `vp-${lessonId}`;
 
+const SAVE_INTERVAL_MS = 10_000;
+
 export function VideoPlayer({ src, lessonId, courseId, onComplete }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [completed, setCompleted] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  // Timestamp of the last localStorage write; -Infinity ensures the first save
+  // always goes through even if it happens before 10 s have elapsed.
+  const lastSavedAtRef = useRef<number>(-Infinity);
   // Screen-reader announcement text surfaced via aria-live
   const [announcement, setAnnouncement] = useState('');
 
@@ -45,7 +50,14 @@ export function VideoPlayer({ src, lessonId, courseId, onComplete }: Props) {
   const handleTimeUpdate = () => {
     const v = videoRef.current;
     if (!v || completed) return;
-    localStorage.setItem(storageKey(lessonId), String(v.currentTime));
+
+    // Throttle localStorage writes to at most once every SAVE_INTERVAL_MS
+    const now = Date.now();
+    if (now - lastSavedAtRef.current >= SAVE_INTERVAL_MS) {
+      localStorage.setItem(storageKey(lessonId), String(v.currentTime));
+      lastSavedAtRef.current = now;
+    }
+
     if (v.duration && v.currentTime / v.duration >= 0.9) {
       setCompleted(true);
       fetch('/v1/progress/video', {

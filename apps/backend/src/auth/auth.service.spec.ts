@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { MailService } from '../mail/mail.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { PasswordResetToken } from './password-reset-token.entity';
 import { AuditService } from '../audit/audit.service';
 import { TokenService } from './token.service';
@@ -47,6 +48,25 @@ describe('AuthService', () => {
 
   const mockAuditService = { log: jest.fn() };
 
+  // Transaction-repository mock: the manager returned by dataSource.transaction
+  // will return this object for any getRepository() call inside the callback.
+  const mockTransactionRepo = {
+    findOne: jest.fn(),
+    delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
+
+  const mockDataSource = {
+    transaction: jest
+      .fn()
+      .mockImplementation(async (cb: (m: any) => Promise<any>) => {
+        const manager = {
+          getRepository: jest.fn().mockReturnValue(mockTransactionRepo),
+        };
+        return cb(manager);
+      }),
+  };
+
   const mockTokenService = {
     issueTokenPair: jest.fn(),
     refresh: jest.fn(),
@@ -82,6 +102,7 @@ describe('AuthService', () => {
         { provide: TokenService, useValue: mockTokenService },
         { provide: MfaService, useValue: mockMfaService },
         { provide: OAuthService, useValue: mockOAuthService },
+        { provide: DataSource, useValue: mockDataSource },
       ],
     }).compile();
 
@@ -207,6 +228,99 @@ describe('AuthService', () => {
 
       const result = await service.login(email, password, 'BACKUPCODE');
       expect(result).toHaveProperty('access_token');
+    });
+  });
+
+  // ── resetPassword ─────────────────────────────────────────────────────────
+
+  describe('resetPassword', () => {
+    const token = 'valid-reset-token';
+    const newPassword = 'newSecurePassword123';
+    const userId = 'user-uuid';
+    const resetTokenId = 'token-uuid';
+    const mockTokenRecord = {
+      id: resetTokenId,
+      tokenHash: 'hashed-token',
+      userId,
+      expiresAt: new Date(Date.now() + 3600000),
+      used: false,
+      createdAt: new Date(),
+    };
+
+    beforeEach(() => {
+      mockTokenService.hashToken.mockReturnValue('hashed-token');
+      mockTransactionRepo.findOne.mockResolvedValue(mockTokenRecord);
+      mockTransactionRepo.delete.mockResolvedValue({ affected: 1 });
+      mockTransactionRepo.update.mockResolvedValue({ affected: 1 });
+      jest.spyOn(bcrypt, 'hash').mockImplementation(() => Promise.resolve('new-password-hash'));
+    });
+
+    it('resets the password and deletes the token within a transaction', async () => {
+      const result = await service.resetPassword(token, newPassword);
+
+      expect(result).toEqual({ message: 'Password reset successfully. You can now log in.' });
+
+      // A transaction was used
+      expect(mockDataSource.transaction).toHaveBeenCalledTimes(1);
+
+      // The token was looked up inside the transaction
+      expect(mockTransactionRepo.findOne).toHaveBeenCalledWith({
+        where: { tokenHash: 'hashed-token', used: false },
+      });
+
+      // Password was hashed and the user was updated inside the transaction
+      expect(bcrypt.hash).toHaveBeenCalledWith(newPassword, 10);
+      expect(mockTransactionRepo.update).toHaveBeenCalledWith(userId, {
+        passwordHash: 'new-password-hash',
+      });
+
+      // The token row was deleted inside the transaction
+      expect(mockTransactionRepo.delete).toHaveBeenCalledWith({ id: resetTokenId });
+
+      // Audit was logged after the transaction
+      expect(mockAuditService.log).toHaveBeenCalledWith(
+        'auth.password_reset.complete',
+        userId,
+        true,
+      );
+    });
+
+    it('throws BadRequestException when token is invalid', async () => {
+      mockTransactionRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.resetPassword(token, newPassword)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(mockTransactionRepo.update).not.toHaveBeenCalled();
+      expect(mockTransactionRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when token has expired', async () => {
+      mockTransactionRepo.findOne.mockResolvedValue({
+        ...mockTokenRecord,
+        expiresAt: new Date(Date.now() - 3600000),
+      });
+
+      await expect(service.resetPassword(token, newPassword)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(mockTransactionRepo.update).not.toHaveBeenCalled();
+      expect(mockTransactionRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when token was already used (concurrent attempt)', async () => {
+      mockTransactionRepo.delete.mockResolvedValue({ affected: 0 });
+
+      await expect(service.resetPassword(token, newPassword)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      // Password update should still have gone through, but the delete detected
+      // that another request already consumed the token.
+      expect(mockTransactionRepo.update).toHaveBeenCalled();
+      expect(mockTransactionRepo.delete).toHaveBeenCalled();
     });
   });
 
