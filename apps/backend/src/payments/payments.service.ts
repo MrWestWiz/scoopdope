@@ -52,6 +52,32 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Create a Stripe PaymentIntent for purchasing a course.
+   *
+   * Initiates payment processing by creating a PaymentIntent in Stripe. Supports optional
+   * coupon codes for discounts. The returned client secret is used by the frontend to complete
+   * payment via Stripe Elements or Apple Pay/Google Pay.
+   *
+   * @param {string} courseId - The UUID of the course being purchased.
+   * @param {SupportedCurrency} currency - ISO 4217 currency code (e.g., 'USD', 'EUR').
+   * @param {string} userId - The UUID of the user initiating the purchase.
+   * @param {string} [couponCode] - Optional coupon code to apply a discount. Validated before use.
+   *
+   * @returns {Promise<{clientSecret: string; amount: number; currency: SupportedCurrency; courseId: string; discountApplied: number; finalPriceUsd: number}>}
+   *   - `clientSecret` (string): Stripe client secret for completing payment on the frontend.
+   *   - `amount` (number): Amount in the smallest currency unit (e.g., cents for USD).
+   *   - `currency` (SupportedCurrency): Requested currency code.
+   *   - `courseId` (string): The course ID for idempotency.
+   *   - `discountApplied` (number): Discount amount in USD if a valid coupon was applied.
+   *   - `finalPriceUsd` (number): Final price in USD after discount.
+   *
+   * @throws {NotFoundException} If the course does not exist.
+   * @throws {BadRequestException} If the course price is not set or is zero (free course).
+   *
+   * @see https://stripe.com/docs/api/payment_intents/create
+   * @see https://stripe.com/docs/payments/payment-intents
+   */
   async createPaymentIntent(
     courseId: string,
     currency: SupportedCurrency,
@@ -94,6 +120,27 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Get the price of a course converted to a specific currency.
+   *
+   * Converts the course price from USD to the requested currency using live exchange rates.
+   * Falls back to cached rates or USD display if the exchange rate API is unavailable.
+   * Used for displaying course pricing on the storefront and checkout.
+   *
+   * @param {string} courseId - The UUID of the course.
+   * @param {SupportedCurrency} currency - ISO 4217 currency code to convert to.
+   *
+   * @returns {Promise<{courseId: string; priceUsd: number; currency: SupportedCurrency; price: number; currencyNote?: string}>}
+   *   - `courseId` (string): The requested course ID.
+   *   - `priceUsd` (number): Original price in USD.
+   *   - `currency` (SupportedCurrency): Requested currency.
+   *   - `price` (number): Converted price in the requested currency.
+   *   - `currencyNote` (string): Optional warning if rates are stale or unavailable.
+   *
+   * @throws {NotFoundException} If the course does not exist.
+   *
+   * @see https://stripe.com/docs/currencies
+   */
   async getPriceInCurrency(courseId: string, currency: SupportedCurrency) {
     const course = await this.courseRepo.findOne({ where: { id: courseId } });
     if (!course) throw new NotFoundException('Course not found');
@@ -155,6 +202,26 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Handle incoming Stripe webhook events.
+   *
+   * Validates the webhook signature and routes events to appropriate handlers. Current events:
+   * - `payment_intent.succeeded`: Payment completed successfully (triggers enrollment logic).
+   *
+   * Webhook signature verification is mandatory (HMAC-SHA256) to prevent unauthorized event
+   * injection. Refer to Stripe's webhook documentation for security best practices.
+   *
+   * @param {string} signature - The `Stripe-Signature` HTTP header value from the webhook.
+   * @param {Buffer} payload - Raw request body as a Buffer (must not be parsed JSON).
+   *
+   * @returns {Promise<void>} Returns void; side effects are event handlers.
+   *
+   * @throws {BadRequestException} If the signature verification fails or is missing.
+   *
+   * @see https://stripe.com/docs/webhooks/verify
+   * @see https://stripe.com/docs/api/events/types#event_types-payment_intent.succeeded
+   * @see https://stripe.com/docs/webhooks/setup
+   */
   async handleWebhook(signature: string, payload: Buffer) {
     const webhookSecret = this.configService.get<string>('stripe.webhookSecret')!;
     let event: Stripe.Event;
