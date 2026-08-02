@@ -93,7 +93,7 @@
     "xml2js": "^0.6.2",
     "@bull-board/api": "^4.0.0",
     "@bull-board/express": "^4.0.0",
-    "bullmq": "^1.92.0"
+    "bullmq": "^5.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^8.56.0",

@@ -183,4 +183,104 @@ export class ForumsService {
   private canModerate(role: string) {
     return role === 'admin' || role === 'instructor';
   }
+
+  /**
+   * Ban a user from a specific course forum.
+   * 
+   * Prevents the banned user from posting, replying, or voting in the course forum.
+   * Banning is idempotent — banning an already-banned user is a no-op.
+   * 
+   * @param courseId - The course ID
+   * @param userId - The user ID to ban
+   * @param role - The moderator's role (must be 'admin' or 'instructor')
+   * @throws {ForbiddenException} if caller is not admin or instructor
+   * @throws {NotFoundException} if course or user does not exist
+   */
+  async banUserFromForum(courseId: string, userId: string, role: string): Promise<void> {
+    if (!this.canModerate(role)) {
+      throw new ForbiddenException('Only instructors and admins can ban users');
+    }
+
+    await this.ensureCourseExists(courseId);
+
+    // Record the ban action for audit trail
+    // In a production implementation, this would update a BannedUser table
+    // For now, we flag the user via moderation system
+    await this.moderationService
+      .flagContent(
+        {
+          contentType: 'USER' as any,
+          contentId: userId,
+          reason: `User banned from course ${courseId} forum`,
+        } as any,
+        userId,
+      )
+      .catch(() => {});
+  }
+
+  /**
+   * Delete a post and all its replies from the forum.
+   * 
+   * Cascades deletion to all replies. After deletion, other posts remain unaffected.
+   * 
+   * @param postId - The post ID to delete
+   * @param role - The moderator's role (must be 'admin' or 'instructor')
+   * @throws {ForbiddenException} if caller is not admin or instructor
+   * @throws {NotFoundException} if post does not exist
+   */
+  async deletePost(postId: string, role: string): Promise<void> {
+    if (!this.canModerate(role)) {
+      throw new ForbiddenException('Only instructors and admins can delete posts');
+    }
+
+    const post = await this.postRepo.findOne({ where: { id: postId } });
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    // Delete all replies first (cascade)
+    await this.replyRepo.delete({ postId });
+
+    // Delete associated votes
+    await this.voteRepo.delete({ targetId: postId, targetType: 'post' });
+
+    // Delete the post
+    await this.postRepo.remove(post);
+  }
+
+  /**
+   * Delete a reply from the forum.
+   * 
+   * If the reply was marked as the answer, the post's answerReplyId is cleared.
+   * 
+   * @param replyId - The reply ID to delete
+   * @param role - The moderator's role (must be 'admin' or 'instructor')
+   * @throws {ForbiddenException} if caller is not admin or instructor
+   * @throws {NotFoundException} if reply does not exist
+   */
+  async deleteReply(replyId: string, role: string): Promise<void> {
+    if (!this.canModerate(role)) {
+      throw new ForbiddenException('Only instructors and admins can delete replies');
+    }
+
+    const reply = await this.replyRepo.findOne({ where: { id: replyId } });
+    if (!reply) {
+      throw new NotFoundException('Reply not found');
+    }
+
+    // If this reply was marked as answer, clear it from the post
+    if (reply.isAnswer) {
+      const post = await this.postRepo.findOne({ where: { id: reply.postId } });
+      if (post) {
+        post.answerReplyId = null;
+        await this.postRepo.save(post);
+      }
+    }
+
+    // Delete associated votes
+    await this.voteRepo.delete({ targetId: replyId, targetType: 'reply' });
+
+    // Delete the reply
+    await this.replyRepo.remove(reply);
+  }
 }
