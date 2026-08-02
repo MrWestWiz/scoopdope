@@ -7,6 +7,20 @@ import { Course } from '../courses/course.entity';
 import { CurrencyConversionService, SupportedCurrency } from './currency-conversion.service';
 import { CouponsService } from '../coupons/coupons.service';
 
+interface OrderPreview {
+  courseId: string;
+  courseTitle: string;
+  originalPriceUsd: number;
+  originalPrice: number;
+  currency: SupportedCurrency;
+  discountApplied: number;
+  finalPriceUsd: number;
+  finalPrice: number;
+  hasCoupon: boolean;
+  couponCode?: string;
+  currencyNote?: string;
+}
+
 @Injectable()
 export class PaymentsService {
   private readonly stripe: Stripe;
@@ -92,6 +106,51 @@ export class PaymentsService {
       priceUsd,
       currency,
       price: converted.amount,
+      currencyNote: converted.currencyNote,
+    };
+  }
+
+  async previewOrder(
+    courseId: string,
+    currency: SupportedCurrency,
+    couponCode?: string,
+  ): Promise<OrderPreview> {
+    const course = await this.courseRepo.findOne({ where: { id: courseId } });
+    if (!course) throw new NotFoundException('Course not found');
+
+    const originalPriceUsd = Number(course.priceUsd ?? 0);
+    let finalPriceUsd = originalPriceUsd;
+    let discountApplied = 0;
+    let hasCoupon = false;
+
+    if (couponCode && originalPriceUsd > 0) {
+      const { valid, discount } = await this.couponsService.validateForCheckout(couponCode, originalPriceUsd);
+      if (valid) {
+        discountApplied = discount;
+        finalPriceUsd = Math.max(0, originalPriceUsd - discount);
+        hasCoupon = true;
+      }
+    }
+
+    const converted = finalPriceUsd > 0
+      ? await this.currencyConversion.convertWithMetadata(finalPriceUsd, currency)
+      : { amount: 0 };
+
+    const originalConverted = originalPriceUsd > 0
+      ? await this.currencyConversion.convertWithMetadata(originalPriceUsd, currency)
+      : { amount: 0 };
+
+    return {
+      courseId,
+      courseTitle: course.title,
+      originalPriceUsd,
+      originalPrice: originalConverted.amount,
+      currency,
+      discountApplied,
+      finalPriceUsd,
+      finalPrice: converted.amount,
+      hasCoupon,
+      couponCode: hasCoupon ? couponCode : undefined,
       currencyNote: converted.currencyNote,
     };
   }
