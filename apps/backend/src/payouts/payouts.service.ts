@@ -85,13 +85,28 @@ export class PayoutsService {
       if (totalCompletions === 0) continue;
 
       const totalRevenue = totalCompletions * coursePrice;
-      const platformFee = (totalRevenue * platformFeePercent) / 100;
-      const instructorShare = totalRevenue - platformFee;
+      
+      // Stripe fees: 2.9% + $0.30 per transaction
+      // For simplicity, we'll use 2.9% + $0.30 per completion
+      // In production, this would come from Stripe's PaymentIntent.application_fee_amount
+      const stripeFeePercentage = totalRevenue * 0.029;
+      const stripeFeeFixedPerCompletion = 0.30;
+      const totalStripeFee = stripeFeePercentage + (stripeFeeFixedPerCompletion * totalCompletions);
+      
+      // Net revenue = gross - Stripe fees
+      const netRevenue = totalRevenue - totalStripeFee;
+      
+      // Platform fee taken from net revenue
+      const platformFee = (netRevenue * platformFeePercent) / 100;
+      
+      // Instructor share = net revenue - platform fee
+      const instructorShare = netRevenue - platformFee;
 
       const payout = this.payoutsRepository.create({
         instructorId,
         courseId: course.id,
         totalRevenue,
+        stripeFee: totalStripeFee,
         platformFee,
         instructorShare,
         status: 'pending',
