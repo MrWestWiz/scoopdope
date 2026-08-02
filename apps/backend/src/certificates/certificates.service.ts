@@ -46,10 +46,12 @@ export class CertificatesService {
 
   /**
    * Automatically issues a certificate when a student reaches 100% progress.
-   * The `progress.completed` event is emitted by ProgressService.
+   * Listens on both `course.completed` (canonical domain event) and the legacy
+   * `progress.completed` alias — both are emitted by ProgressService.
    * Errors are swallowed here so a certificate failure never rolls back the
    * progress record.
    */
+  @OnEvent('course.completed')
   @OnEvent('progress.completed')
   async handleProgressCompleted(payload: {
     userId: string;
