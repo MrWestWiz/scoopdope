@@ -8,6 +8,8 @@ import {
   Delete,
   Body,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
   Request,
   ForbiddenException,
   NotFoundException,
@@ -115,6 +117,7 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   @ApiOperation({ summary: 'Update user profile' })
   @ApiResponse({ status: 200, description: 'User updated successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })

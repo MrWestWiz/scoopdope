@@ -60,10 +60,29 @@ export class UsersService {
     return this.repo.save(this.repo.create(data));
   }
 
+  // Allowed profile fields that users can self-update.
+  // Explicitly whitelisted to prevent privilege escalation via unvalidated properties
+  // such as role, isBanned, isVerified, passwordHash, etc.
+  private static readonly ALLOWED_UPDATE_FIELDS = new Set<string>([
+    'username',
+    'avatar',
+    'bio',
+  ]);
+
+  private pickAllowedFields(data: Partial<User>): Partial<User> {
+    const picked: any = {};
+    for (const key of Object.keys(data)) {
+      if (UsersService.ALLOWED_UPDATE_FIELDS.has(key)) {
+        picked[key] = (data as any)[key];
+      }
+    }
+    return picked;
+  }
+
   async update(id: string, data: Partial<User>) {
     const user = await this.findById(id);
     if (!user) throw new NotFoundException('User not found');
-    return this.repo.save({ ...user, ...data });
+    return this.repo.save({ ...user, ...this.pickAllowedFields(data) });
   }
 
   async findAll(

@@ -58,4 +58,82 @@ describe('UsersService', () => {
 
     await expect(service.update('1', { username: 'abc' })).rejects.toThrow('User not found');
   });
+
+  it('update should block role escalation via profile update', async () => {
+    const existing = { id: '1', email: 'test@example.com', role: 'student' } as User;
+    const saved = { id: '1', email: 'test@example.com', role: 'student' } as User;
+
+    mockRepo.findOne.mockResolvedValue(existing);
+    mockRepo.save.mockResolvedValue(saved);
+
+    await service.update('1', { role: 'admin' } as any);
+
+    // The save call must NOT include role
+    const saveCall = mockRepo.save.mock.calls[0][0];
+    expect(saveCall.role).toBe('student');
+  });
+
+  it('update should block isBanned escalation via profile update', async () => {
+    const existing = { id: '1', email: 'test@example.com', isBanned: false } as User;
+    const saved = { id: '1', email: 'test@example.com', isBanned: false } as User;
+
+    mockRepo.findOne.mockResolvedValue(existing);
+    mockRepo.save.mockResolvedValue(saved);
+
+    await service.update('1', { isBanned: true } as any);
+
+    const saveCall = mockRepo.save.mock.calls[0][0];
+    expect(saveCall.isBanned).toBe(false);
+  });
+
+  it('update should block id modification via profile update', async () => {
+    const existing = { id: '1', email: 'test@example.com' } as User;
+    const saved = { id: '1', email: 'test@example.com' } as User;
+
+    mockRepo.findOne.mockResolvedValue(existing);
+    mockRepo.save.mockResolvedValue(saved);
+
+    await service.update('1', { id: '2' } as any);
+
+    const saveCall = mockRepo.save.mock.calls[0][0];
+    expect(saveCall.id).toBe('1');
+  });
+
+  it('update should block passwordHash via profile update', async () => {
+    const existing = { id: '1', email: 'test@example.com' } as User;
+    const saved = { id: '1', email: 'test@example.com' } as User;
+
+    mockRepo.findOne.mockResolvedValue(existing);
+    mockRepo.save.mockResolvedValue(saved);
+
+    await service.update('1', { passwordHash: 'hacked' } as any);
+
+    const saveCall = mockRepo.save.mock.calls[0][0];
+    expect(saveCall.passwordHash).toBeUndefined();
+  });
+
+  it('update should pick allowed fields while dropping disallowed ones', async () => {
+    const existing = {
+      id: '1',
+      email: 'test@example.com',
+      username: 'oldname',
+      role: 'student',
+    } as User;
+    const saved = {
+      id: '1',
+      email: 'test@example.com',
+      username: 'newname',
+      role: 'student',
+    } as User;
+
+    mockRepo.findOne.mockResolvedValue(existing);
+    mockRepo.save.mockResolvedValue(saved);
+
+    // Send both an allowed field (username) and disallowed field (role)
+    await service.update('1', { username: 'newname', role: 'admin' } as any);
+
+    const saveCall = mockRepo.save.mock.calls[0][0];
+    expect(saveCall.username).toBe('newname');
+    expect(saveCall.role).toBe('student');
+  });
 });
