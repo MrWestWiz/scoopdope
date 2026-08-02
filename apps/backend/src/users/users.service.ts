@@ -2,6 +2,11 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
+import { Post } from '../forums/post.entity';
+import { Review } from '../courses/review.entity';
+
+/** Stable UUID used as the author for anonymized forum posts. */
+export const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 export interface ExportedUserData {
   profile: Partial<User>;
@@ -15,6 +20,8 @@ export interface ExportedUserData {
 export class UsersService {
   constructor(
     @InjectRepository(User) private repo: Repository<User>,
+    @InjectRepository(Post) private postRepo: Repository<Post>,
+    @InjectRepository(Review) private reviewRepo: Repository<Review>,
   ) {}
 
   findByEmail(email: string) {
@@ -152,6 +159,16 @@ export class UsersService {
     const anonymizedEmail = `deleted-${id.slice(0, 8)}@anonymized.invalid`;
     const anonymizedUsername = `deleted-user-${id.slice(0, 8)}`;
 
+    // Reassign forum posts to the anonymous placeholder user so thread
+    // continuity is preserved (replies to these posts still have a parent).
+    await this.postRepo.update({ userId: id }, { userId: ANONYMOUS_USER_ID });
+
+    // Anonymize course reviews in-place: detach the author identity
+    // by clearing the userId link rather than deleting the review row,
+    // keeping course ratings intact.
+    await this.reviewRepo.update({ userId: id }, { userId: ANONYMOUS_USER_ID });
+
+    // Scrub all PII from the user row and mark it as deleted.
     await this.repo.save({
       ...user,
       email: anonymizedEmail,
