@@ -18,9 +18,9 @@
     "test:e2e": "jest --config jest-e2e.config.js --runInBand",
     "test:pact": "jest --testPathPattern=pact",
     "test:mutation:ci": "stryker run --reporters=json,clear-text",
-    "migration:run": "node dist/database/migration-runner.js run",
-    "migration:revert": "node dist/database/migration-runner.js revert",
-    "migration:show": "node dist/database/migration-runner.js show",
+    "migration:run": "npm run build && node dist/database/migration-runner.js run",
+    "migration:revert": "npm run build && node dist/database/migration-runner.js revert",
+    "migration:show": "npm run build && node dist/database/migration-runner.js show",
     "migration:create": "typeorm migration:create src/migrations/${NAME:=$(date +%s)}",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/data-source.ts src/migrations/${NAME:=$(date +%s)}"
   },
