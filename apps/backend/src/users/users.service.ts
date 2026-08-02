@@ -144,7 +144,26 @@ export class UsersService {
   async softDelete(id: string) {
     const user = await this.findById(id);
     if (!user) throw new NotFoundException('User not found');
+    if (user.deletedAt) throw new NotFoundException('User already deleted');
     return this.repo.save({ ...user, deletedAt: new Date() });
+  }
+
+  async bulkSoftDelete(ids: string[]) {
+    const results = { deleted: [] as string[], failed: [] as { id: string; reason: string }[] };
+
+    for (const id of ids) {
+      try {
+        await this.softDelete(id);
+        results.deleted.push(id);
+      } catch (err) {
+        results.failed.push({
+          id,
+          reason: err instanceof NotFoundException ? err.message : 'Unknown error',
+        });
+      }
+    }
+
+    return results;
   }
 
   findByReferralCode(code: string) {
