@@ -58,9 +58,18 @@ export function CourseCard({ course, observerRef }: { course: Course; observerRe
               {course.price === 0 ? 'Free' : `$${course.price}`}
             </span>
           )}
-          <Link href={`/courses/${course.id}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline ml-auto">
-            View →
-          </Link>
+          <div className="flex items-center gap-2 ml-auto">
+            <Link href={`/courses/${course.id}`} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+              View →
+            </Link>
+            <Link
+              href={`/courses/${course.id}/enroll`}
+              className="text-sm font-medium px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
+              aria-label={`Enroll in ${course.title}`}
+            >
+              Enroll
+            </Link>
+          </div>
         </div>
       </div>
     </div>
