@@ -106,6 +106,7 @@ import { validationSchema } from './config/validation.schema';
         ttl: 60,
       }),
     }),
+    DistributedLockModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
