@@ -45,6 +45,9 @@ export class Certificate {
   @Column({ nullable: true })
   pdfUrl!: string;
 
+  @Column({ nullable: true, type: 'timestamptz' })
+  revokedAt: Date | null;
+
   @CreateDateColumn()
   issuedAt!: Date;
 }

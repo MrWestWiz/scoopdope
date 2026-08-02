@@ -278,6 +278,17 @@ export class CertificatesService {
 
     if (!cert) return { valid: false };
 
+    if (cert.revokedAt) {
+      throw new HttpException(
+        {
+          valid: false,
+          reason: 'revoked',
+          revokedAt: cert.revokedAt,
+        },
+        HttpStatus.GONE,
+      );
+    }
+
     return {
       valid: cert.status === 'minted' || cert.status === 'verified',
       certificate: cert,
