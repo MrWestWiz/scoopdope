@@ -38,6 +38,35 @@ export class ForumsService {
     });
   }
 
+  async getThread(threadId: string, page = 1, limit = 20) {
+    const safePage = Math.max(1, isNaN(page) ? 1 : page);
+    const safeLimit = Math.min(Math.max(1, isNaN(limit) ? 20 : limit), 100);
+
+    const post = await this.postRepo.findOne({
+      where: { id: threadId },
+      relations: ['user'],
+    });
+
+    if (!post) {
+      throw new NotFoundException('Thread not found');
+    }
+
+    const [replies, total] = await this.replyRepo.findAndCount({
+      where: { postId: threadId },
+      relations: ['user'],
+      order: { createdAt: 'ASC' },
+      take: safeLimit,
+      skip: (safePage - 1) * safeLimit,
+    });
+
+    return {
+      data: { ...post, replies },
+      total,
+      page: safePage,
+      limit: safeLimit,
+    };
+  }
+
   async createPost(courseId: string, userId: string, role: string, dto: CreatePostDto) {
     await this.ensureCourseExists(courseId);
 
