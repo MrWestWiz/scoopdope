@@ -2,6 +2,8 @@
 
 Thank you for considering a contribution to scoopdope! This document covers everything you need to get started: development environment setup, branching conventions, commit message format, how to run every test suite, and the pull-request review process.
 
+**Please review our [Code of Conduct](./CODE_OF_CONDUCT.md) before participating in this community.** We are committed to creating a welcoming and inclusive environment for all contributors.
+
 ---
 
 ## Table of Contents

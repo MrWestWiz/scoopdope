@@ -19,6 +19,7 @@ export class Enrollment {
   @Column()
   userId: string;
 
+  // Why: enrollments belong to a user; deleting the user removes their course enrollments.
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;
@@ -26,6 +27,7 @@ export class Enrollment {
   @Column()
   courseId: string;
 
+  // Why: if a course is deleted, all enrollments in it are removed to prevent orphan records.
   @ManyToOne(() => Course, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'courseId' })
   course: Course;
