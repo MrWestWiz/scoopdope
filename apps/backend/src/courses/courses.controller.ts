@@ -8,6 +8,7 @@ import {
   Body,
   Query,
   UseGuards,
+  Header,
 } from '@nestjs/common';
 import { CoursesService } from './courses.service';
 import {
@@ -30,6 +31,7 @@ export class CoursesController {
   constructor(private coursesService: CoursesService) {}
 
   @Get()
+  @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
   @ApiOperation({ summary: 'Get all published courses' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
