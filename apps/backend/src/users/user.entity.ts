@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToOne } from 'typeorm';
 
 export enum SubscriptionTier {
   FREE = 'free',
@@ -105,4 +105,11 @@ export class User {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  /**
+   * Lazy inverse side of the one-to-one Portfolio relation.
+   * Not loaded by default; use explicit `relations: ['portfolio']` if needed.
+   */
+  @OneToOne('Portfolio', 'user')
+  portfolio?: import('../portfolio/portfolio.entity').Portfolio;
 }
