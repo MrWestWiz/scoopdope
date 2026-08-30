@@ -45,6 +45,7 @@ import { CertificatesModule } from './certificates/certificates.module';
 import { ApiVersionModule } from './common/versioning';
 import { PayoutsModule } from './payouts/payouts.module';
 import { InstructorApplicationsModule } from './instructor-applications/instructor-applications.module';
+import { ModuleCompletionModule } from './progress/module-completion.module';
 import { AssignmentsModule } from './assignments/assignments.module';
 import { StreaksModule } from './streaks/streaks.module';
 import { BundlesModule } from './bundles/bundles.module';
@@ -137,6 +138,7 @@ import { validationSchema } from './config/validation.schema';
     CertificatesModule,
     PayoutsModule,
     InstructorApplicationsModule,
+    ModuleCompletionModule,
     HealthModule,
     MetricsModule,
     KycModule,
