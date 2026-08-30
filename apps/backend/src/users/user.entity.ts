@@ -15,19 +15,19 @@ export class User {
   email: string;
 
   @Column({ unique: true, nullable: true })
-  username: string;
+  username: string | null;
 
   @Column({ select: false })
   passwordHash: string;
 
   @Column({ nullable: true })
-  avatar: string;
+  avatar: string | null;
 
   @Column({ nullable: true, type: 'text' })
-  bio: string;
+  bio: string | null;
 
   @Column({ nullable: true })
-  stellarPublicKey: string;
+  stellarPublicKey: string | null;
 
   @Column({ default: 'student' })
   role: string;
@@ -39,7 +39,7 @@ export class User {
   isVerified: boolean;
 
   @Column({ nullable: true })
-  deletedAt: Date;
+  deletedAt: Date | null;
 
   @Column({ nullable: true, type: 'varchar' })
   verificationToken: string | null;
@@ -57,7 +57,7 @@ export class User {
   mfaBackupCodes: string[] | null;
 
   @Column({ unique: true, nullable: true })
-  referralCode: string;
+  referralCode: string | null;
 
   @Column({ nullable: true, type: 'varchar' })
   referredBy: string | null;
@@ -79,10 +79,10 @@ export class User {
   subscriptionTier: SubscriptionTier;
 
   @Column({ nullable: true })
-  stripeCustomerId: string;
+  stripeCustomerId: string | null;
 
   @Column({ nullable: true })
-  stripeSubscriptionId: string;
+  stripeSubscriptionId: string | null;
 
   @Column({ nullable: true, type: 'datetime' })
   subscriptionExpiresAt: Date | null;
