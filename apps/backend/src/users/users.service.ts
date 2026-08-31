@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
+import { UserRole } from './dto/change-role.dto';
 import { Post } from '../forums/post.entity';
 import { Review } from '../courses/review.entity';
 
@@ -136,6 +137,11 @@ export class UsersService {
   }
 
   async changeRole(id: string, role: string) {
+    if (!Object.values(UserRole).includes(role as UserRole)) {
+      throw new BadRequestException(
+        `Invalid role "${role}". Valid roles: ${Object.values(UserRole).join(', ')}`,
+      );
+    }
     const user = await this.findById(id);
     if (!user) throw new NotFoundException('User not found');
     return this.repo.save({ ...user, role });
