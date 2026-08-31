@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Query, Redirect, Req, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiProperty } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import { RateLimit } from '../rate-limit/rate-limit.decorator';
@@ -8,36 +8,81 @@ import { AuthService } from './auth.service';
 import { StellarAuthService } from './stellar-auth.service';
 import { GoogleAuthGuard } from './google-auth.guard';
 import { GoogleProfile } from './google.strategy';
-import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional, Matches } from 'class-validator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { Roles } from './roles.decorator';
 import { RolesGuard } from './roles.guard';
 
-class AuthDto {
-  @IsEmail() email: string;
-  @IsString() @MinLength(8) password: string;
+class RegisterDto {
+  @ApiProperty({
+    example: 'user@example.com',
+    description: 'Valid email address for the new account',
+  })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({
+    example: 'Str0ngPass!',
+    description:
+      'Password — minimum 8 characters, must contain at least one uppercase letter, one lowercase letter, and one number',
+    minLength: 8,
+  })
+  @IsString()
+  @MinLength(8)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/, {
+    message:
+      'password must contain at least one uppercase letter, one lowercase letter, and one number',
+  })
+  password: string;
 }
 
-class LoginDto extends AuthDto {
+class LoginDto {
+  @ApiProperty({
+    example: 'user@example.com',
+    description: 'Registered email address',
+  })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({
+    example: 'Str0ngPass!',
+    description: 'Account password',
+    minLength: 8,
+  })
+  @IsString()
+  @MinLength(8)
+  password: string;
+
+  @ApiProperty({
+    example: '123456',
+    description: 'TOTP code required only when MFA is enabled on the account',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   mfa_token?: string;
 }
 
 class ResendVerificationDto {
+  @ApiProperty({ example: 'user@example.com' })
   @IsEmail() email: string;
 }
 
 class ForgotPasswordDto {
+  @ApiProperty({ example: 'user@example.com' })
   @IsEmail() email: string;
 }
 
 class ResetPasswordDto {
+  @ApiProperty({ example: 'reset-token-here' })
   @IsString() token: string;
+
+  @ApiProperty({ example: 'NewStr0ng!', minLength: 8 })
   @IsString() @MinLength(8) newPassword: string;
 }
 
 class RefreshDto {
+  @ApiProperty({ example: 'refresh-token-here' })
   @IsString() refresh_token: string;
 }
 
@@ -105,42 +150,73 @@ export class AuthController {
   @Post('register')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @RateLimit({ limit: 5, windowMs: 60000 })
-  @ApiOperation({ summary: 'Register a new user' })
-  @ApiBody({ schema: { example: { email: 'user@example.com', password: 'password123' } } })
+  @ApiOperation({
+    summary: 'Register a new user',
+    description:
+      'Creates a new account. Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, and one number. Returns a JWT access token and the new user ID on success.',
+  })
+  @ApiBody({ type: RegisterDto })
   @ApiResponse({
     status: 201,
-    description: 'User registered successfully',
-    schema: { example: { access_token: 'jwt', refresh_token: 'token' } },
+    description: 'User registered successfully — returns JWT tokens and user ID',
+    schema: {
+      example: {
+        userId: 'uuid-here',
+        access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        refresh_token: 'opaque-refresh-token',
+        message: 'Registration successful. Please verify your email.',
+      },
+    },
   })
-  @ApiResponse({ status: 400, description: 'Invalid input' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden' })
-  @ApiResponse({ status: 404, description: 'Not found' })
-  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 400, description: 'Validation error — invalid email or weak password' })
+  @ApiResponse({ status: 409, description: 'Conflict — email address already registered' })
+  @ApiResponse({ status: 429, description: 'Too many requests — rate limit exceeded' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
-  @ApiResponse({ status: 409, description: 'User already exists' })
-  register(@Body() dto: AuthDto, @Query('ref') ref?: string) {
+  register(@Body() dto: RegisterDto, @Query('ref') ref?: string) {
     return this.authService.register(dto.email, dto.password, ref);
   }
 
   @Post('login')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @RateLimit({ limit: 5, windowMs: 60000 })
-  @ApiOperation({ summary: 'Login with email and password' })
-  @ApiBody({ schema: { example: { email: 'user@example.com', password: 'password123' } } })
+  @ApiOperation({
+    summary: 'Login with email and password',
+    description:
+      'Authenticates a user and returns JWT tokens along with the user profile. Rate-limited to 5 attempts per minute per IP to prevent brute-force attacks. Returns 401 for both unknown email and incorrect password to avoid user enumeration.',
+  })
+  @ApiBody({ type: LoginDto })
   @ApiResponse({
     status: 200,
-    description: 'Login successful',
-    schema: { example: { access_token: 'jwt', refresh_token: 'token' } },
+    description: 'Login successful — returns JWT tokens and user object',
+    schema: {
+      example: {
+        access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        refresh_token: 'opaque-refresh-token',
+        user: {
+          id: 'uuid-here',
+          email: 'user@example.com',
+          role: 'student',
+          isVerified: true,
+          avatar: null,
+          username: null,
+          createdAt: '2025-01-01T00:00:00.000Z',
+        },
+      },
+    },
   })
-  @ApiResponse({ status: 400, description: 'Bad request' })
-  @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  @ApiResponse({ status: 403, description: 'Forbidden' })
-  @ApiResponse({ status: 404, description: 'Not found' })
-  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 400, description: 'Bad request — missing or invalid fields' })
+  @ApiResponse({ status: 401, description: 'Unauthorized — invalid email or incorrect password' })
+  @ApiResponse({ status: 403, description: 'Forbidden — unverified email or admin MFA not set up' })
+  @ApiResponse({ status: 429, description: 'Too many requests — rate limit of 5 per minute exceeded' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto.email, dto.password, dto.mfa_token);
+  login(@Body() dto: LoginDto, @Req() req: { ip: string; headers: Record<string, string> }) {
+    return this.authService.login(
+      dto.email,
+      dto.password,
+      dto.mfa_token,
+      req.ip,
+      req.headers['user-agent'],
+    );
   }
 
   @Post('refresh')
