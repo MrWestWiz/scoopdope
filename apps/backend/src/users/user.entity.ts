@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany } from 'typeorm';
+import { Reward } from '../rewards/reward.entity';
 
 export enum SubscriptionTier {
   FREE = 'free',
@@ -67,6 +68,12 @@ export class User {
 
   @Column({ default: 0 })
   longestStreak: number;
+
+  @Column({ default: 0 })
+  rewardBalance: number;
+
+  @OneToMany(() => Reward, (reward) => reward.user)
+  rewards: Reward[];
 
   @Column({ nullable: true, type: 'datetime' })
   lastActivityAt: Date | null;
