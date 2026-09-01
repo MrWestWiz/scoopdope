@@ -318,7 +318,7 @@ export class AuthController {
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
-  enableMfa(@Req() req) {
+  enableMfa(@Req() req: { user: { id: string } }) {
     return this.authService.generateMfaSecret(req.user.id);
   }
 
@@ -332,7 +332,7 @@ export class AuthController {
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
-  verifyMfa(@Req() req, @Body('code') code: string) {
+  verifyMfa(@Req() req: { user: { id: string } }, @Body('code') code: string) {
     return this.authService.verifyMfaSecret(req.user.id, code);
   }
 
@@ -346,7 +346,7 @@ export class AuthController {
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
-  disableMfa(@Req() req, @Body('code') code: string) {
+  disableMfa(@Req() req: { user: { id: string } }, @Body('code') code: string) {
     return this.authService.disableMfa(req.user.id, code);
   }
 
@@ -360,7 +360,7 @@ export class AuthController {
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
-  regenerateBackupCodes(@Req() req, @Body('code') code: string) {
+  regenerateBackupCodes(@Req() req: { user: { id: string } }, @Body('code') code: string) {
     return this.authService.regenerateBackupCodes(req.user.id, code);
   }
 
@@ -421,7 +421,7 @@ export class AuthController {
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
   verifyStellarSignature(
-    @Req() req,
+    @Req() req: { user: { id: string } },
     @Body('publicKey') publicKey: string,
     @Body('signature') signature: string,
     @Body('challenge') challenge: string

@@ -80,8 +80,16 @@ export class CoursesController {
     description: 'Returns paginated published courses',
     schema: { example: { data: [], total: 0, page: 1, limit: 20 } },
   })
-  findAll(@Query() query: CourseQueryDto) {
+  findAll(@Query() query: CourseQueryDto = {}) {
     return this.coursesService.findAll(query);
+  }
+
+  @Get('search')
+  @ApiOperation({ summary: 'Search published courses by title and description' })
+  @ApiQuery({ name: 'q', required: false, description: 'Search query; empty returns all courses' })
+  @ApiResponse({ status: 200, description: 'Ranked, paginated course search results' })
+  search(@Query() query: CourseQueryDto) {
+    return this.coursesService.search(query.q ?? query.search ?? '', query.page, query.limit);
   }
 
   @Get(':id')

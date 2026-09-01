@@ -25,7 +25,9 @@ export default () => ({
     username: process.env.DATABASE_USER!,
     password: process.env.DATABASE_PASSWORD!,
     name: process.env.DATABASE_NAME!,
-    poolSize: parseInt(process.env.DATABASE_POOL_SIZE || '50', 10),
+    poolMin: parseInt(process.env.DATABASE_POOL_MIN || '5', 10),
+    poolMax: parseInt(process.env.DATABASE_POOL_MAX || '20', 10),
+    idleTimeoutMs: parseInt(process.env.DATABASE_IDLE_TIMEOUT_MS || '30000', 10),
   },
 
   jwt: {

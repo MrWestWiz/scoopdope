@@ -82,7 +82,7 @@ export class SurveysController {
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
   async submitResponse(
-    @Request() req,
+    @Request() req: { user: { id: string } },
     @Param('surveyId') surveyId: string,
     @Body() body: { answers: Record<string, string | number>; isAnonymous?: boolean },
   ) {

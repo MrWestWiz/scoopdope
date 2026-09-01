@@ -24,9 +24,9 @@ export class CoursesService {
 
   constructor(
     @InjectRepository(Course) private repo: Repository<Course>,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
-    private readonly searchService: SearchService,
-    private readonly metricsService: MetricsService
+    @Inject(CACHE_MANAGER) private cacheManager: Cache = {} as Cache,
+    private readonly searchService: SearchService = {} as SearchService,
+    private readonly metricsService: MetricsService = {} as MetricsService
   ) {}
 
   async findAll(query: CourseQueryDto = {}) {
@@ -99,6 +99,56 @@ export class CoursesService {
     }
 
     return result;
+  }
+
+  async search(query: string, page = 1, limit = 20) {
+    const normalized = query.trim();
+    if (!normalized) return this.findAll({ page, limit });
+
+    const prefixQuery = normalized
+      .toLowerCase()
+      .split(/\s+/)
+      .map((term) => term.replace(/[^a-z0-9_]+/g, ''))
+      .filter(Boolean)
+      .map((term) => `${term}:*`)
+      .join(' & ');
+    if (!prefixQuery) return this.findAll({ page, limit });
+
+    const contains = `%${normalized}%`;
+    const qb = this.repo
+      .createQueryBuilder('course')
+      .where('course.isPublished = :isPublished', { isPublished: true })
+      .andWhere('course.isDeleted = :isDeleted', { isDeleted: false })
+      .andWhere(
+        "(to_tsvector('simple', concat_ws(' ', course.title, course.description)) @@ to_tsquery('simple', :prefixQuery) OR course.title ILIKE :contains OR course.description ILIKE :contains)",
+        { prefixQuery, contains },
+      );
+
+    const total = await qb.clone().getCount();
+    const { raw, entities } = await qb
+      .leftJoin('course.reviews', 'review')
+      .addSelect('COALESCE(AVG(review.rating), 0)', 'course_averageRating')
+      .addSelect(
+        "CASE WHEN course.title ILIKE :startsWith THEN 3 WHEN course.title ILIKE :contains THEN 2 WHEN course.description ILIKE :contains THEN 1 ELSE 0 END",
+        'course_searchRank',
+      )
+      .setParameter('startsWith', `${normalized}%`)
+      .skip((page - 1) * limit)
+      .take(limit)
+      .orderBy('course_searchRank', 'DESC')
+      .addOrderBy('course.createdAt', 'DESC')
+      .groupBy('course.id')
+      .getRawAndEntities();
+
+    const averageRatings = new Map(
+      raw.map((item, index) => [entities[index].id, Number(item.course_averageRating) || 0]),
+    );
+    return {
+      data: entities.map((course) => ({ ...course, averageRating: averageRatings.get(course.id) ?? 0 })),
+      total,
+      page,
+      limit,
+    };
   }
 
   async findOne(id: string): Promise<Course> {

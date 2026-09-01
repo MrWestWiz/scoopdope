@@ -29,6 +29,10 @@ export class CohortsService {
 
   async addMember(cohortId: string, userId: string) {
     const cohort = await this.cohortRepo.findOne({ where: { id: cohortId } });
+    if (!cohort) {
+      throw new Error('Cohort not found');
+    }
+
     if (cohort.maxMembers > 0) {
       const memberCount = await this.memberRepo.count({ where: { cohortId } });
       if (memberCount >= cohort.maxMembers) {

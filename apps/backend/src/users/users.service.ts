@@ -291,8 +291,7 @@ export class UsersService {
     }
 
     // Scrub all PII from the user row and mark it as deleted.
-    await this.repo.save({
-      ...user,
+    Object.assign(user, {
       email: anonymizedEmail,
       username: anonymizedUsername,
       passwordHash: '',
@@ -304,5 +303,6 @@ export class UsersService {
       stripeSubscriptionId: null as unknown as string,
       deletedAt: new Date(),
     });
+    await this.repo.save(user);
   }
 }

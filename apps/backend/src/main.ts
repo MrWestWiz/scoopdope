@@ -17,6 +17,13 @@ import { join } from 'path';
 import { MetricsInterceptor } from './metrics/metrics.interceptor';
 import { MetricsService } from './metrics/metrics.service';
 import { AppDataSource } from './data-source';
+import {
+  API_VERSION_HEADER,
+  API_VERSIONS,
+  DEFAULT_API_VERSION,
+  LATEST_API_VERSION,
+  getVersionInfo,
+} from './common/versioning';
 
 async function runMigrationCommand(command: string) {
   const logger = new Logger('MigrationCommand');
@@ -37,12 +44,8 @@ async function runMigrationCommand(command: string) {
         break;
       }
       case 'migration:revert': {
-        const reverted = await AppDataSource.undoLastMigration();
-        if (reverted) {
-          logger.log(`Reverted: ${reverted.name}`);
-        } else {
-          logger.log('Nothing to revert.');
-        }
+        await AppDataSource.undoLastMigration();
+        logger.log('Last migration reverted.');
         break;
       }
       default:

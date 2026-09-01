@@ -42,8 +42,10 @@ export const dataSourceOptions: DataSourceOptions = {
     ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
     : false,
   extra: {
-    max: parseInt(process.env.DB_POOL_SIZE || '10', 10),
-    idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '10000', 10),
+    min: parseInt(process.env.DATABASE_POOL_MIN || '5', 10),
+    max: parseInt(process.env.DATABASE_POOL_MAX || '20', 10),
+    idleTimeoutMillis: parseInt(process.env.DATABASE_IDLE_TIMEOUT_MS || '30000', 10),
+    connectionTimeoutMillis: 5_000,
   },
   synchronize,
 };

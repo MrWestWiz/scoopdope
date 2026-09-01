@@ -9,6 +9,7 @@ import { LessonsService } from './lessons.service';
 import { TranscribeService } from './transcribe.service';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { CreateLessonDto } from './dto/create-lesson.dto';
+import { CourseModule } from './course-module.entity';
 
 @ApiTags('modules')
 @Controller()
@@ -56,7 +57,11 @@ export class ModulesController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   createModule(@Param('courseId') courseId: string, @Body() dto: CreateModuleDto) {
-    return this.modulesService.create(courseId, dto);
+    const payload: Partial<CourseModule> = {
+      ...dto,
+      releaseDate: dto.releaseDate ? new Date(dto.releaseDate) : undefined,
+    };
+    return this.modulesService.create(courseId, payload);
   }
 
   @ApiBearerAuth()
@@ -73,7 +78,11 @@ export class ModulesController {
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Module not found' })
   updateModule(@Param('id') id: string, @Body() dto: Partial<CreateModuleDto>) {
-    return this.modulesService.update(id, dto);
+    const payload: Partial<CourseModule> = {
+      ...dto,
+      releaseDate: dto.releaseDate ? new Date(dto.releaseDate) : undefined,
+    };
+    return this.modulesService.update(id, payload);
   }
 
   @ApiBearerAuth()
