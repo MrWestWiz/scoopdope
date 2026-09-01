@@ -91,9 +91,26 @@ export class CoursesService {
   async findOne(id: string): Promise<Course> {
     const course = await this.repo.findOne({
       where: { id, isDeleted: false },
-      relations: ['prerequisites', 'prerequisites.prerequisite'],
+      relations: [
+        'prerequisites',
+        'prerequisites.prerequisite',
+        'modules',
+        'modules.lessons',
+        'instructor',
+      ],
     });
     if (!course) throw new NotFoundException('Course not found');
+
+    // Sort modules and lessons by order
+    if (course.modules) {
+      course.modules.sort((a, b) => a.order - b.order);
+      course.modules.forEach((module) => {
+        if (module.lessons) {
+          module.lessons.sort((a, b) => a.order - b.order);
+        }
+      });
+    }
+
     return course;
   }
 
