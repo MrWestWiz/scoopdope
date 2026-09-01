@@ -25,16 +25,47 @@ import { TranscribeService } from './transcribe.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { User } from '../users/user.entity';
+import { CourseInstructor } from './course-instructor.entity';
+import { InstructorAssignmentService } from './instructor-assignment.service';
+import { InstructorAssignmentController } from './instructor-assignment.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Course, CourseModule, Lesson, Review, Enrollment, CourseVersion, CoursePrerequisite, User]),
+    TypeOrmModule.forFeature([
+      Course,
+      CourseModule,
+      Lesson,
+      Review,
+      Enrollment,
+      CourseVersion,
+      CoursePrerequisite,
+      User,
+      CourseInstructor,
+    ]),
     SearchModule,
     NotificationsModule,
     MetricsModule,
   ],
-  providers: [CoursesService, ModulesService, LessonsService, ReviewsService, CourseVersioningService, PrerequisitesService, CourseSchedulerService, DripSchedulerService, TranscribeService],
-  controllers: [CoursesController, ModulesController, ReviewsController, CourseVersioningController, PrerequisitesController],
+  providers: [
+    CoursesService,
+    ModulesService,
+    LessonsService,
+    ReviewsService,
+    CourseVersioningService,
+    PrerequisitesService,
+    CourseSchedulerService,
+    DripSchedulerService,
+    TranscribeService,
+    InstructorAssignmentService,
+  ],
+  controllers: [
+    CoursesController,
+    ModulesController,
+    ReviewsController,
+    CourseVersioningController,
+    PrerequisitesController,
+    InstructorAssignmentController,
+  ],
   exports: [CoursesService, PrerequisitesService],
 })
 export class CoursesModule {}

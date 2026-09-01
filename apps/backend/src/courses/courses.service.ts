@@ -30,11 +30,11 @@ export class CoursesService {
   ) {}
 
   async findAll(query: CourseQueryDto = {}) {
-    const { search, level, language, page = 1, limit = 20 } = query;
+    const { search, level, category, language, page = 1, limit = 20 } = query;
 
     // Cache key encodes all filter params; skip cache for search queries
     const cacheKey = !search
-      ? `courses:catalog:${level ?? ''}:${language ?? ''}:${page}:${limit}`
+      ? `courses:catalog:${level ?? ''}:${category ?? ''}:${language ?? ''}:${page}:${limit}`
       : null;
 
     if (cacheKey) {
@@ -61,6 +61,10 @@ export class CoursesService {
 
     if (level) {
       qb.andWhere('course.level = :level', { level });
+    }
+
+    if (category) {
+      qb.andWhere('course.category = :category', { category });
     }
 
     if (language) {
@@ -100,9 +104,26 @@ export class CoursesService {
   async findOne(id: string): Promise<Course> {
     const course = await this.repo.findOne({
       where: { id, isDeleted: false },
-      relations: ['prerequisites', 'prerequisites.prerequisite'],
+      relations: [
+        'prerequisites',
+        'prerequisites.prerequisite',
+        'modules',
+        'modules.lessons',
+        'instructor',
+      ],
     });
     if (!course) throw new NotFoundException('Course not found');
+
+    // Sort modules and lessons by order
+    if (course.modules) {
+      course.modules.sort((a, b) => a.order - b.order);
+      course.modules.forEach((module) => {
+        if (module.lessons) {
+          module.lessons.sort((a, b) => a.order - b.order);
+        }
+      });
+    }
+
     return course;
   }
 

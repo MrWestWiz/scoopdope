@@ -97,4 +97,8 @@ export const validationSchema = Joi.object({
 
   // Payouts
   PAYOUT_BATCH_SIZE: Joi.number().integer().min(1).default(500),
+
+  // Rewards
+  REWARD_MODULE_COMPLETION: Joi.number().integer().min(0).default(25),
+  REWARD_COURSE_COMPLETION: Joi.number().integer().min(0).default(100),
 });

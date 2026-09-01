@@ -4,6 +4,7 @@ import { UsersController, AdminUsersController } from './users.controller';
 describe('UsersController', () => {
   const mockService = {
     findById: jest.fn(),
+    getPublicProfile: jest.fn(),
     update: jest.fn(),
     changeRole: jest.fn(),
   };
@@ -17,12 +18,20 @@ describe('UsersController', () => {
     controller = new UsersController(mockService as any, mockService as any, mockAuditService as any);
   });
 
-  it('findOne should return a user', async () => {
-    const user = { id: '1', email: 'u@example.com' };
-    mockService.findById.mockResolvedValue(user);
+  it('findOne should return a public profile', async () => {
+    const profile = { id: '1', username: 'u', role: 'student' };
+    mockService.getPublicProfile.mockResolvedValue(profile);
 
-    await expect(controller.findOne('1')).resolves.toEqual(user);
-    expect(mockService.findById).toHaveBeenCalledWith('1');
+    await expect(controller.findOne('1', {})).resolves.toEqual(profile);
+    expect(mockService.getPublicProfile).toHaveBeenCalledWith('1', undefined);
+  });
+
+  it('findOne should pass the viewer id when authenticated', async () => {
+    const profile = { id: '1', username: 'u', role: 'student', email: 'u@example.com' };
+    mockService.getPublicProfile.mockResolvedValue(profile);
+
+    await expect(controller.findOne('1', { user: { id: '1' } })).resolves.toEqual(profile);
+    expect(mockService.getPublicProfile).toHaveBeenCalledWith('1', '1');
   });
 
   it('update should update when same user id', async () => {
