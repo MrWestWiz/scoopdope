@@ -114,4 +114,9 @@ export default () => ({
   payouts: {
     batchSize: parseInt(process.env.PAYOUT_BATCH_SIZE ?? '500', 10),
   },
+
+  rewards: {
+    moduleCompletion: parseInt(process.env.REWARD_MODULE_COMPLETION ?? '25', 10),
+    courseCompletion: parseInt(process.env.REWARD_COURSE_COMPLETION ?? '100', 10),
+  },
 });

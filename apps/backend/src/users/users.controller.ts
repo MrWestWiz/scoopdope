@@ -18,9 +18,11 @@ import {
 import { UsersService } from './users.service';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangeRoleDto } from './dto/change-role.dto';
 import { BulkDeleteUserDto } from './dto/bulk-delete-user.dto';
 import { StellarService } from '../stellar/stellar.service';
 import { AuditService } from '../audit/audit.service';
@@ -65,21 +67,22 @@ export class UsersController {
     return this.usersService.findById(req.user.id);
   }
 
+  @UseGuards(OptionalJwtAuthGuard)
   @Get(':id')
-  @ApiOperation({ summary: 'Get user by ID' })
+  @ApiOperation({ summary: 'Get user profile by ID' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({
     status: 200,
-    description: 'Returns user data',
-    schema: { example: { data: {}, statusCode: 200, timestamp: '2024-01-01T00:00:00.000Z' } },
+    description:
+      'Returns user profile (id, username, role, createdAt, enrollment/completion stats; ' +
+      'email only for the profile owner; bio and coursesTaught for instructors)',
   })
   @ApiResponse({ status: 404, description: 'User not found' })
-  findOne(@Param('id') id: string) {
-    return this.usersService.findById(id);
+  findOne(@Param('id') id: string, @Request() req: { user?: { id: string } }) {
+    return this.usersService.getPublicProfile(id, req.user?.id);
   }
 
   @Get(':id/token-balance')
@@ -116,6 +119,47 @@ export class UsersController {
   @ApiResponse({ status: 500, description: 'Internal server error' })
   getReferrals(@Param('id') id: string) {
     return this.usersService.getReferralStats(id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Patch(':id/role')
+  @UsePipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+  )
+  @ApiOperation({ summary: 'Assign or change a user role (admin only)' })
+  @ApiResponse({ status: 200, description: 'Role updated; returns the updated user object' })
+  @ApiResponse({ status: 400, description: 'Invalid role value' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - admin role required, or admin attempting to change own role',
+  })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  async changeRole(
+    @Param('id') id: string,
+    @Body() dto: ChangeRoleDto,
+    @Req() req: { user: { id: string }; ip?: string; headers?: Record<string, string> },
+  ) {
+    // Prevent an admin from demoting/locking themselves out of the platform.
+    if (req.user.id === id) {
+      throw new ForbiddenException('Administrators cannot change their own role');
+    }
+
+    const updated = await this.usersService.changeRole(id, dto.role);
+
+    await this.auditService.log(
+      AuditAction.ROLE_CHANGED,
+      req.user.id,
+      true,
+      { affectedId: id, newRole: dto.role },
+      req.ip,
+      req.headers?.['user-agent'],
+    );
+
+    return updated;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -233,8 +277,27 @@ export class AdminUsersController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  changeRole(@Param('id') id: string, @Body('role') role: string) {
-    return this.usersService.changeRole(id, role);
+  async changeRole(
+    @Param('id') id: string,
+    @Body('role') role: string,
+    @Req() req: { user: { id: string }; ip: string; headers: Record<string, string> },
+  ) {
+    if (req.user.id === id) {
+      throw new ForbiddenException('Administrators cannot change their own role');
+    }
+
+    const updated = await this.usersService.changeRole(id, role);
+
+    await this.auditService.log(
+      AuditAction.ROLE_CHANGED,
+      req.user.id,
+      true,
+      { affectedId: id, newRole: role },
+      req.ip,
+      req.headers?.['user-agent'],
+    );
+
+    return updated;
   }
 
   @Patch(':id/ban')
