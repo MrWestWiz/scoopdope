@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { User } from './user.entity';
 import { Post } from '../forums/post.entity';
 import { Review } from '../courses/review.entity';
+import { Enrollment } from '../enrollments/enrollment.entity';
+import { Course } from '../courses/course.entity';
 
 /** Stable UUID used as the author for anonymized forum posts. */
 export const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -22,6 +24,8 @@ export class UsersService {
     @InjectRepository(User) private repo: Repository<User>,
     @InjectRepository(Post) private postRepo: Repository<Post>,
     @InjectRepository(Review) private reviewRepo: Repository<Review>,
+    @InjectRepository(Enrollment) private enrollmentRepo: Repository<Enrollment>,
+    @InjectRepository(Course) private courseRepo: Repository<Course>,
   ) {}
 
   findByEmail(email: string) {
@@ -42,6 +46,49 @@ export class UsersService {
 
   findById(id: string) {
     return this.repo.findOne({ where: { id } });
+  }
+
+  /**
+   * Public-facing profile view for GET /users/:id.
+   * - Never exposes passwordHash or other auth secrets (see User entity `select: false`).
+   * - Email is only included when the viewer is the profile owner.
+   * - Instructors additionally expose bio and the list of courses they teach.
+   */
+  async getPublicProfile(id: string, viewerId?: string) {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+
+    const [enrollmentCount, completedCoursesCount] = await Promise.all([
+      this.enrollmentRepo.count({ where: { userId: id } }),
+      this.enrollmentRepo
+        .createQueryBuilder('enrollment')
+        .where('enrollment.userId = :id', { id })
+        .andWhere('enrollment.completedAt IS NOT NULL')
+        .getCount(),
+    ]);
+
+    const profile: Record<string, unknown> = {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      createdAt: user.createdAt,
+      enrollmentCount,
+      completedCoursesCount,
+    };
+
+    if (viewerId && viewerId === user.id) {
+      profile.email = user.email;
+    }
+
+    if (user.role === 'instructor') {
+      profile.bio = user.bio;
+      profile.coursesTaught = await this.courseRepo.find({
+        where: { instructorId: id, isDeleted: false },
+        select: ['id', 'title'],
+      });
+    }
+
+    return profile;
   }
 
   findByIdWithPassword(id: string) {
