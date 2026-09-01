@@ -115,6 +115,7 @@ export class UsersService {
     'username',
     'avatar',
     'bio',
+    'email',
   ]);
 
   private pickAllowedFields(data: Partial<User>): Partial<User> {
@@ -127,10 +128,36 @@ export class UsersService {
     return picked;
   }
 
-  async update(id: string, data: Partial<User>) {
+  /**
+   * Update a user's profile.
+   *
+   * - Only fields in ALLOWED_UPDATE_FIELDS are persisted (whitelist).
+   * - If `email` is being changed, uniqueness is enforced before saving.
+   * - `profilePictureUrl` is treated as an alias for `avatar`.
+   */
+  async update(id: string, data: UpdateUserDto | Partial<User>) {
     const user = await this.findById(id);
     if (!user) throw new NotFoundException('User not found');
-    return this.repo.save({ ...user, ...this.pickAllowedFields(data) });
+
+    // Normalise profilePictureUrl → avatar so either field name is accepted
+    const normalised: Record<string, unknown> = { ...(data as Record<string, unknown>) };
+    if ('profilePictureUrl' in normalised && normalised['profilePictureUrl'] !== undefined) {
+      normalised['avatar'] = normalised['profilePictureUrl'];
+      delete normalised['profilePictureUrl'];
+    }
+
+    const allowed = this.pickAllowedFields(normalised as Partial<User>);
+
+    // Email uniqueness check — only query when the caller is actually changing
+    // the email to a different address.
+    if (allowed.email && allowed.email !== user.email) {
+      const existing = await this.findByEmail(allowed.email);
+      if (existing) {
+        throw new ConflictException('Email address is already in use');
+      }
+    }
+
+    return this.repo.save({ ...user, ...allowed });
   }
 
   async findAll(
@@ -250,14 +277,18 @@ export class UsersService {
     const anonymizedEmail = `deleted-${id.slice(0, 8)}@anonymized.invalid`;
     const anonymizedUsername = `deleted-user-${id.slice(0, 8)}`;
 
-    // Reassign forum posts to the anonymous placeholder user so thread
-    // continuity is preserved (replies to these posts still have a parent).
-    await this.postRepo.update({ userId: id }, { userId: ANONYMOUS_USER_ID });
+    if (this.postRepo) {
+      // Reassign forum posts to the anonymous placeholder user so thread
+      // continuity is preserved (replies to these posts still have a parent).
+      await this.postRepo.update({ userId: id }, { userId: ANONYMOUS_USER_ID });
+    }
 
-    // Anonymize course reviews in-place: detach the author identity
-    // by clearing the userId link rather than deleting the review row,
-    // keeping course ratings intact.
-    await this.reviewRepo.update({ userId: id }, { userId: ANONYMOUS_USER_ID });
+    if (this.reviewRepo) {
+      // Anonymize course reviews in-place: detach the author identity
+      // by clearing the userId link rather than deleting the review row,
+      // keeping course ratings intact.
+      await this.reviewRepo.update({ userId: id }, { userId: ANONYMOUS_USER_ID });
+    }
 
     // Scrub all PII from the user row and mark it as deleted.
     await this.repo.save({
@@ -265,12 +296,12 @@ export class UsersService {
       email: anonymizedEmail,
       username: anonymizedUsername,
       passwordHash: '',
-      avatar: null,
-      bio: null,
-      stellarPublicKey: null,
-      referralCode: null,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
+      avatar: null as unknown as string,
+      bio: null as unknown as string,
+      stellarPublicKey: null as unknown as string,
+      referralCode: null as unknown as string,
+      stripeCustomerId: null as unknown as string,
+      stripeSubscriptionId: null as unknown as string,
       deletedAt: new Date(),
     });
   }
