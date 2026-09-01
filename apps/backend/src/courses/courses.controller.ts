@@ -26,7 +26,7 @@ import { CourseQueryDto } from './dto/course-query.dto';
 import { ScheduleCourseDto } from './dto/schedule-course.dto';
 
 @ApiTags('courses')
-@Controller('courses')
+@Controller('v1/courses')
 export class CoursesController {
   constructor(private coursesService: CoursesService) {}
 
@@ -49,6 +49,11 @@ export class CoursesController {
     required: false,
     enum: ['beginner', 'intermediate', 'advanced'],
     description: 'Filter by level',
+  })
+  @ApiQuery({
+    name: 'category',
+    required: false,
+    description: 'Filter by course category',
   })
   @ApiQuery({
     name: 'language',

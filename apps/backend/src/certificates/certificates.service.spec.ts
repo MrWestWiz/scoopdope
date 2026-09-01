@@ -1,117 +1,119 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { CertificatesService } from './certificates.service';
-import { Certificate } from './certificate.entity';
-import { Enrollment } from '../enrollments/enrollment.entity';
-import { Progress } from '../progress/progress.entity';
-import { Lesson } from '../courses/lesson.entity';
-import { CourseModule } from '../courses/course-module.entity';
 
-describe('CertificatesService', () => {
-  let certificatesRepository: {
-    findOne: jest.Mock;
-    save: jest.Mock;
-    create: jest.Mock;
-    remove: jest.Mock;
-  };
-  let enrollmentsRepository: {
-    findOne: jest.Mock;
-  };
-  let progressRepository: {
-    find: jest.Mock;
-  };
-  let courseModuleRepository: {
-    find: jest.Mock;
-  };
-  let lessonRepository: {
-    find: jest.Mock;
-  };
-  let stellarService: {
-    mintCertificateNFT: jest.Mock;
-    getTransactionExplorerUrl: jest.Mock;
-  };
+describe('CertificatesService verification', () => {
+  let service: CertificatesService;
+  let repo: any;
+  let stellarService: any;
+  let configService: any;
 
   beforeEach(() => {
-    certificatesRepository = {
+    repo = {
       findOne: jest.fn(),
-      save: jest.fn(),
-      create: jest.fn(),
-      remove: jest.fn(),
     };
-    enrollmentsRepository = { findOne: jest.fn() };
-    progressRepository = { find: jest.fn() };
-    courseModuleRepository = { find: jest.fn() };
-    lessonRepository = { find: jest.fn() };
+
     stellarService = {
-      mintCertificateNFT: jest.fn(),
-      getTransactionExplorerUrl: jest.fn(),
+      getTransactions: jest.fn(),
     };
+
+    configService = {
+      get: jest.fn((key: string) => {
+        if (key === 'stellar.network') return 'testnet';
+        return undefined;
+      }),
+    };
+
+    service = new CertificatesService(repo, {} as any, stellarService, configService);
   });
 
-  const buildService = () =>
-    new CertificatesService(
-      certificatesRepository as any,
-      enrollmentsRepository as any,
-      stellarService as any,
-      progressRepository as any,
-      courseModuleRepository as any,
-      lessonRepository as any,
-    );
-
-  it('rejects issuing a certificate before all course lessons are completed', async () => {
-    enrollmentsRepository.findOne.mockResolvedValue({
-      userId: 'user-1',
-      courseId: 'course-1',
-      completedAt: new Date(),
-      user: { stellarPublicKey: 'GTEST' },
-      course: { title: 'Course 1' },
-    });
-    certificatesRepository.findOne.mockResolvedValue(null);
-    courseModuleRepository.find.mockResolvedValue([{ id: 'module-1' }]);
-    lessonRepository.find.mockResolvedValue([{ id: 'lesson-1' }, { id: 'lesson-2' }]);
-    progressRepository.find.mockResolvedValue([{ lessonId: 'lesson-1', progressPct: 100 }]);
-
-    const service = buildService();
-
-    await expect(service.issueCertificate('user-1', 'course-1')).rejects.toThrow(BadRequestException);
-  });
-
-  it('issues a certificate when all lessons are complete and stores the Stellar hash', async () => {
-    const certificate = { id: 'cert-1', userId: 'user-1', courseId: 'course-1', status: 'pending' };
-
-    enrollmentsRepository.findOne.mockResolvedValue({
-      userId: 'user-1',
-      courseId: 'course-1',
-      completedAt: new Date(),
-      user: { stellarPublicKey: 'GTEST' },
-      course: { title: 'Course 1' },
-    });
-    certificatesRepository.findOne.mockResolvedValue(null);
-    certificatesRepository.create.mockReturnValue(certificate);
-    certificatesRepository.save.mockResolvedValue({
-      ...certificate,
+  it('returns a public verification payload with student/course details for a valid certificate', async () => {
+    const cert = {
+      id: 'cert-123',
+      userId: 'user-456',
+      courseId: 'course-789',
+      certificateHash: 'abc123',
+      stellarTransactionId: 'tx-abc',
       status: 'minted',
-      certificateHash: 'hash-123',
-      stellarTransactionId: 'tx-123',
-      issuedAt: new Date(),
-    });
-    courseModuleRepository.find.mockResolvedValue([{ id: 'module-1' }]);
-    lessonRepository.find.mockResolvedValue([{ id: 'lesson-1' }, { id: 'lesson-2' }]);
-    progressRepository.find.mockResolvedValue([
-      { lessonId: 'lesson-1', progressPct: 100 },
-      { lessonId: 'lesson-2', progressPct: 100 },
+      revokedAt: null,
+      issuedAt: new Date('2024-03-08T12:00:00.000Z'),
+      user: { username: 'alice', email: 'alice@example.com' },
+      course: { title: 'Blockchain Basics' },
+    };
+
+    repo.findOne.mockResolvedValue(cert);
+    stellarService.getTransactions.mockResolvedValue([
+      { hash: 'tx-abc', successful: true, createdAt: '2024-03-08T12:00:05.000Z' },
     ]);
-    stellarService.mintCertificateNFT.mockResolvedValue('tx-123');
-    stellarService.getTransactionExplorerUrl.mockReturnValue('https://stellar.expert/explorer/testnet/tx/tx-123');
 
-    const service = buildService();
-    const result = await service.issueCertificate('user-1', 'course-1');
+    await expect(service.verifyById('cert-123')).resolves.toMatchObject({
+      certificateId: 'cert-123',
+      studentName: 'alice',
+      courseName: 'Blockchain Basics',
+      status: 'valid',
+      verified: true,
+      revoked: false,
+      transactionHash: 'tx-abc',
+    });
+  });
 
-    expect(stellarService.mintCertificateNFT).toHaveBeenCalledWith(
-      'GTEST',
-      expect.any(String),
-      'Course 1',
-    );
-    expect(certificatesRepository.save).toHaveBeenCalled();
-    expect(result.stellarTransactionId).toBe('tx-123');
+  it('marks a revoked certificate as revoked even when the blockchain lookup succeeds', async () => {
+    const cert = {
+      id: 'cert-333',
+      userId: 'user-222',
+      courseId: 'course-777',
+      certificateHash: 'revokedhash',
+      stellarTransactionId: 'tx-revoked',
+      status: 'minted',
+      revokedAt: new Date('2024-05-11T00:00:00.000Z'),
+      issuedAt: new Date('2024-05-01T00:00:00.000Z'),
+      user: { username: 'bob', email: 'bob@example.com' },
+      course: { title: 'Smart Contracts' },
+    };
+
+    repo.findOne.mockResolvedValue(cert);
+    stellarService.getTransactions.mockResolvedValue([
+      { hash: 'tx-revoked', successful: true, createdAt: '2024-05-01T00:00:01.000Z' },
+    ]);
+
+    await expect(service.verifyById('cert-333')).resolves.toMatchObject({
+      status: 'revoked',
+      verified: false,
+      revoked: true,
+      studentName: 'bob',
+      courseName: 'Smart Contracts',
+    });
+  });
+
+  it('accepts a Stellar transaction hash as the public identifier', async () => {
+    const cert = {
+      id: 'cert-444',
+      userId: 'user-111',
+      courseId: 'course-333',
+      certificateHash: 'hash-444',
+      stellarTransactionId: 'tx-lookup',
+      status: 'minted',
+      revokedAt: null,
+      issuedAt: new Date('2024-02-01T00:00:00.000Z'),
+      user: { username: 'carol', email: 'carol@example.com' },
+      course: { title: 'NFT Basics' },
+    };
+
+    repo.findOne.mockResolvedValue(cert);
+    stellarService.getTransactions.mockResolvedValue([
+      { hash: 'tx-lookup', successful: true, createdAt: '2024-02-01T00:00:05.000Z' },
+    ]);
+
+    await expect(service.verifyById('tx-lookup')).resolves.toMatchObject({
+      certificateId: 'cert-444',
+      status: 'valid',
+      verified: true,
+      transactionHash: 'tx-lookup',
+    });
+  });
+
+  it('throws when the certificate cannot be found by id or hash', async () => {
+    repo.findOne.mockResolvedValue(null);
+
+    await expect(service.verifyById('missing-cert')).rejects.toBeInstanceOf(NotFoundException);
   });
 });

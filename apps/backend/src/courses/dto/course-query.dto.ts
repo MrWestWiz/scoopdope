@@ -22,6 +22,13 @@ export class CourseQueryDto extends PaginationDto {
   @Sanitize(StripHtmlSanitizer)
   level?: string;
 
+  @ApiPropertyOptional({ description: 'Filter by course category' })
+  @IsOptional()
+  @IsString()
+  @Trim()
+  @Sanitize(StripHtmlSanitizer)
+  category?: string;
+
   @ApiPropertyOptional({ description: 'Filter by BCP-47 language code (e.g. "en", "es", "fr")' })
   @IsOptional()
   @IsString()
