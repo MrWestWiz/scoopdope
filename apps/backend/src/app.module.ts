@@ -79,6 +79,7 @@ import { validationSchema } from './config/validation.schema';
     PaymentsModule,
     RewardsModule,
     ApiVersionModule,
+    MonitoringModule,
   ],
   providers: [
     {
