@@ -10,10 +10,13 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, IsNull } from 'typeorm';
+import { Repository, Not, IsNull, In, MoreThanOrEqual } from 'typeorm';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Certificate } from './certificate.entity';
 import { Enrollment } from '../enrollments/enrollment.entity';
+import { Progress } from '../progress/progress.entity';
+import { CourseModule } from '../courses/course-module.entity';
+import { Lesson } from '../courses/lesson.entity';
 import { StellarService } from '../stellar/stellar.service';
 import * as crypto from 'crypto';
 
@@ -99,13 +102,26 @@ export class CertificatesService {
   async issueCertificate(userId: string, courseId: string): Promise<Certificate> {
     // 1. Verify the enrollment exists and the course has been completed
     const enrollment = await this.enrollmentsRepository.findOne({
-      where: { userId, courseId, completedAt: Not(IsNull()) },
+      where: { userId, courseId },
       relations: ['user', 'course'],
     });
 
     if (!enrollment) {
       throw new BadRequestException(
         'Enrollment not found or course not yet completed',
+      );
+    }
+
+    const hasCompletedAllLessons = await this.hasCompletedAllCourseLessons(userId, courseId);
+    if (!enrollment.completedAt && !hasCompletedAllLessons) {
+      throw new BadRequestException(
+        'Course is not fully completed; all lessons must be marked complete before issuing a certificate',
+      );
+    }
+
+    if (!hasCompletedAllLessons) {
+      throw new BadRequestException(
+        'Course is not fully completed; all lessons must be marked complete before issuing a certificate',
       );
     }
 
@@ -180,7 +196,7 @@ export class CertificatesService {
       });
     }
 
-    return certificate;
+    return this.toCertificateResponse(certificate);
   }
 
   // ── Verification endpoint logic ───────────────────────────────────────────
@@ -349,5 +365,56 @@ export class CertificatesService {
       .createHash('sha256')
       .update(`${userId}:${courseId}`)
       .digest('hex');
+  }
+
+  private async hasCompletedAllCourseLessons(userId: string, courseId: string): Promise<boolean> {
+    const modules = await this.courseModuleRepository.find({
+      where: { courseId },
+      select: ['id'],
+    });
+
+    if (modules.length === 0) {
+      return false;
+    }
+
+    const moduleIds = modules.map((module) => module.id);
+    const lessons = await this.lessonRepository.find({
+      where: { moduleId: In(moduleIds) },
+      select: ['id'],
+    });
+
+    if (lessons.length === 0) {
+      return false;
+    }
+
+    const completedLessons = await this.progressRepository.find({
+      where: {
+        userId,
+        courseId,
+        lessonId: In(lessons.map((lesson) => lesson.id)),
+        progressPct: MoreThanOrEqual(100),
+      },
+      select: ['lessonId'],
+    });
+
+    const completedLessonIds = new Set(
+      completedLessons
+        .map((progressRow) => progressRow.lessonId)
+        .filter((lessonId): lessonId is string => Boolean(lessonId)),
+    );
+
+    return lessons.every((lesson) => completedLessonIds.has(lesson.id));
+  }
+
+  private toCertificateResponse(certificate: Certificate): Certificate & {
+    txHash: string | null;
+    stellarExplorerUrl: string | null;
+  } {
+    const txHash = certificate.stellarTransactionId ?? null;
+    return {
+      ...certificate,
+      txHash,
+      stellarExplorerUrl: txHash ? this.stellarService.getTransactionExplorerUrl(txHash) : null,
+    };
   }
 }
