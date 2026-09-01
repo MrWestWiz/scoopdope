@@ -25,6 +25,7 @@ import { BundlesModule } from './bundles/bundles.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { LiveSessionsModule } from './live-sessions/live-sessions.module';
 import { PaymentsModule } from './payments/payments.module';
+import { RewardsModule } from './rewards/rewards.module';
 import * as redisStore from 'cache-manager-redis-store';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import configuration from './config/configuration';
@@ -76,6 +77,7 @@ import { validationSchema } from './config/validation.schema';
     SubscriptionsModule,
     LiveSessionsModule,
     PaymentsModule,
+    RewardsModule,
     ApiVersionModule,
   ],
   providers: [
