@@ -13,6 +13,12 @@ export enum UserRole {
   ADMIN = 'admin',
 }
 
+export enum Role {
+  ADMIN = 'admin',
+  INSTRUCTOR = 'instructor',
+  STUDENT = 'student',
+}
+
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')

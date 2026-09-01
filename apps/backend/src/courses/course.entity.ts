@@ -29,6 +29,9 @@ export class Course {
   @Column('text')
   description: string;
 
+  @Column({ nullable: true })
+  category: string;
+
   @Column({ default: 'beginner' })
   level: string;
 

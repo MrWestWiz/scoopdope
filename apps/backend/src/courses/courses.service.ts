@@ -23,11 +23,11 @@ export class CoursesService {
   ) {}
 
   async findAll(query: CourseQueryDto = {}) {
-    const { search, level, language, page = 1, limit = 20 } = query;
+    const { search, level, category, language, page = 1, limit = 20 } = query;
 
     // Cache key encodes all filter params; skip cache for search queries
     const cacheKey = !search
-      ? `courses:catalog:${level ?? ''}:${language ?? ''}:${page}:${limit}`
+      ? `courses:catalog:${level ?? ''}:${category ?? ''}:${language ?? ''}:${page}:${limit}`
       : null;
 
     if (cacheKey) {
@@ -52,6 +52,10 @@ export class CoursesService {
 
     if (level) {
       qb.andWhere('course.level = :level', { level });
+    }
+
+    if (category) {
+      qb.andWhere('course.category = :category', { category });
     }
 
     if (language) {
