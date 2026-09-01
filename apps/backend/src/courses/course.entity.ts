@@ -14,8 +14,10 @@ import { CoursePrerequisite } from './course-prerequisite.entity';
 
 export enum CourseStatus {
   DRAFT = 'draft',
+  PENDING_REVIEW = 'pending_review',
   SCHEDULED = 'scheduled',
   PUBLISHED = 'published',
+  ARCHIVED = 'archived',
 }
 
 @Entity('courses')
@@ -28,6 +30,9 @@ export class Course {
 
   @Column('text')
   description: string;
+
+  @Column({ nullable: true })
+  category: string;
 
   @Column({ default: 'beginner' })
   level: string;
@@ -77,6 +82,14 @@ export class Course {
    */
   @Column({ nullable: true, type: 'int' })
   maxEnrollment: number | null;
+
+  /** Category for course classification */
+  @Column({ nullable: true })
+  category: string;
+
+  /** Array of learning outcomes for the course */
+  @Column({ type: 'jsonb', nullable: true })
+  learningOutcomes: string[];
 
   // Why: SET NULL preserves course when instructor is deleted; course remains accessible but unassigned.
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })

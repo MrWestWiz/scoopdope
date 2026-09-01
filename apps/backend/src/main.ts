@@ -9,12 +9,21 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ValidationExceptionFilter } from './common/filters/validation-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { SanitizationPipe } from './common/pipes/sanitization.pipe';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { RequestValidationMiddleware } from './common/middleware/request-validation.middleware';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { MetricsInterceptor } from './metrics/metrics.interceptor';
 import { MetricsService } from './metrics/metrics.service';
 import { AppDataSource } from './data-source';
+import {
+  API_VERSION_HEADER,
+  API_VERSIONS,
+  DEFAULT_API_VERSION,
+  LATEST_API_VERSION,
+  getVersionInfo,
+} from './common/versioning';
 
 async function runMigrationCommand(command: string) {
   const logger = new Logger('MigrationCommand');
@@ -35,12 +44,8 @@ async function runMigrationCommand(command: string) {
         break;
       }
       case 'migration:revert': {
-        const reverted = await AppDataSource.undoLastMigration();
-        if (reverted) {
-          logger.log(`Reverted: ${reverted.name}`);
-        } else {
-          logger.log('Nothing to revert.');
-        }
+        await AppDataSource.undoLastMigration();
+        logger.log('Last migration reverted.');
         break;
       }
       default:
@@ -75,6 +80,11 @@ async function bootstrap() {
   const nodeEnv = configService.get<string>('nodeEnv');
 
   app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
+
+  const correlationId = new CorrelationIdMiddleware();
+  const requestValidation = new RequestValidationMiddleware();
+  app.use((req, res, next) => correlationId.use(req, res, next));
+  app.use((req, res, next) => requestValidation.use(req, res, next));
 
   app.setGlobalPrefix('v1', { exclude: ['health', 'health/live', 'health/ready', 'health/startup', 'health/environment', 'health/version'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }), new SanitizationPipe());

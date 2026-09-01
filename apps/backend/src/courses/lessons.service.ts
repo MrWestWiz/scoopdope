@@ -55,7 +55,8 @@ export class LessonsService {
       const jobName = await this.transcribeService.startTranscription(lesson.id, lesson.videoUrl);
       await this.repo.update(lesson.id, { transcriptionJobName: jobName });
     } catch (error) {
-      this.logger.error(`Failed to trigger transcription for lesson ${lesson.id}: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to trigger transcription for lesson ${lesson.id}: ${message}`);
     }
   }
 
@@ -81,7 +82,8 @@ export class LessonsService {
           this.logger.log(`Transcription completed for lesson ${lesson.id}`);
         }
       } catch (error) {
-        this.logger.error(`Error checking transcription for lesson ${lesson.id}: ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Error checking transcription for lesson ${lesson.id}: ${message}`);
       }
     }
   }

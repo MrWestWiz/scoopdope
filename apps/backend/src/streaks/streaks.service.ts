@@ -74,8 +74,9 @@ export class StreaksService {
         );
         await this.stellarService.mintReward(user.stellarPublicKey, milestone.reward);
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `Failed to mint streak reward for user ${user.id}: ${error.message}`
+          `Failed to mint streak reward for user ${user.id}: ${message}`
         );
       }
     }

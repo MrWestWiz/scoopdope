@@ -5,6 +5,13 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 export class CourseQueryDto extends PaginationDto {
+  @ApiPropertyOptional({ description: 'Search query for the course search endpoint' })
+  @IsOptional()
+  @IsString()
+  @Trim()
+  @Sanitize(StripHtmlSanitizer)
+  q?: string;
+
   @ApiPropertyOptional({ description: 'Full-text search on title and description' })
   @IsOptional()
   @IsString()
@@ -21,6 +28,13 @@ export class CourseQueryDto extends PaginationDto {
   @Trim()
   @Sanitize(StripHtmlSanitizer)
   level?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by course category' })
+  @IsOptional()
+  @IsString()
+  @Trim()
+  @Sanitize(StripHtmlSanitizer)
+  category?: string;
 
   @ApiPropertyOptional({ description: 'Filter by BCP-47 language code (e.g. "en", "es", "fr")' })
   @IsOptional()

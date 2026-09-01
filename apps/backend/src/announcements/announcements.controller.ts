@@ -59,12 +59,8 @@ export class AnnouncementsController {
   @ApiResponse({ status: 404, description: 'Course not found' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
-  async create(
-    @Request() req,
-    @Param('courseId') courseId: string,
-    @Body() dto: CreateAnnouncementDto
-  ) {
-    return this.service.create(req.user.id, courseId, dto);
+  create(@Request() req: { user: { id: string } }, @Body() dto: CreateAnnouncementDto) {
+    return this.service.create(req.user.id, dto.courseId, dto.title, dto.body);
   }
 
   /**
@@ -157,7 +153,7 @@ export class AnnouncementsController {
   @ApiResponse({ status: 404, description: 'Announcement not found' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
   @ApiResponse({ status: 500, description: 'Internal server error' })
-  async remove(@Request() req, @Param('id') id: string) {
-    await this.service.remove(id, req.user.id);
+  remove(@Request() req: { user: { id: string } }, @Param('id') id: string) {
+    return this.service.remove(id, req.user.id);
   }
 }

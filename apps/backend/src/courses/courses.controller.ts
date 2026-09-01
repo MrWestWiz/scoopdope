@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Param,
@@ -9,6 +10,7 @@ import {
   Query,
   UseGuards,
   Header,
+  Request,
 } from '@nestjs/common';
 import { CoursesService } from './courses.service';
 import {
@@ -20,13 +22,14 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CourseQueryDto } from './dto/course-query.dto';
 import { ScheduleCourseDto } from './dto/schedule-course.dto';
 
 @ApiTags('courses')
-@Controller('courses')
+@Controller('v1/courses')
 export class CoursesController {
   constructor(private coursesService: CoursesService) {}
 
@@ -51,6 +54,11 @@ export class CoursesController {
     description: 'Filter by level',
   })
   @ApiQuery({
+    name: 'category',
+    required: false,
+    description: 'Filter by course category',
+  })
+  @ApiQuery({
     name: 'language',
     required: false,
     description: 'Filter by BCP-47 language code (e.g. "en", "es", "fr", "ar")',
@@ -72,11 +80,20 @@ export class CoursesController {
     description: 'Returns paginated published courses',
     schema: { example: { data: [], total: 0, page: 1, limit: 20 } },
   })
-  findAll(@Query() query: CourseQueryDto) {
+  findAll(@Query() query: CourseQueryDto = {}) {
     return this.coursesService.findAll(query);
   }
 
+  @Get('search')
+  @ApiOperation({ summary: 'Search published courses by title and description' })
+  @ApiQuery({ name: 'q', required: false, description: 'Search query; empty returns all courses' })
+  @ApiResponse({ status: 200, description: 'Ranked, paginated course search results' })
+  search(@Query() query: CourseQueryDto) {
+    return this.coursesService.search(query.q ?? query.search ?? '', query.page, query.limit);
+  }
+
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get a course by ID' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -88,9 +105,15 @@ export class CoursesController {
     description: 'Returns a single course',
     schema: { example: { data: {}, statusCode: 200, timestamp: '2024-01-01T00:00:00.000Z' } },
   })
-  @ApiResponse({ status: 404, description: 'Course not found' })
-  findOne(@Param('id') id: string) {
-    return this.coursesService.findOne(id);
+  @ApiResponse({
+    status: 404,
+    description: 'Course not found, or not visible to the requester (draft/pending courses)',
+  })
+  findOne(
+    @Param('id') id: string,
+    @Request() req: { user?: { id: string; role: string } },
+  ) {
+    return this.coursesService.findOneForViewer(id, req.user);
   }
 
   @Post()
@@ -195,6 +218,70 @@ export class CoursesController {
   @ApiResponse({ status: 200, description: 'Course published' })
   publishNow(@Param('id') id: string) {
     return this.coursesService.publishNow(id);
+  }
+
+  @Put(':id/publish')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'instructor')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Submit a draft course for admin review (DRAFT -> PENDING_REVIEW)',
+  })
+  @ApiResponse({ status: 200, description: 'Course moved to PENDING_REVIEW' })
+  @ApiResponse({
+    status: 400,
+    description: 'Course is not a draft, or is missing title/description/modules',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - not the course owner' })
+  @ApiResponse({ status: 404, description: 'Course not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  submitForReview(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string; role: string } },
+  ) {
+    return this.coursesService.submitForReview(id, req.user);
+  }
+
+  @Put(':id/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Approve a course pending review and publish it (PENDING_REVIEW -> PUBLISHED)',
+  })
+  @ApiResponse({ status: 200, description: 'Course published' })
+  @ApiResponse({
+    status: 400,
+    description: 'Course is not pending review, or is missing title/description/modules',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
+  @ApiResponse({ status: 404, description: 'Course not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  approve(@Param('id') id: string) {
+    return this.coursesService.approveCourse(id);
+  }
+
+  @Put(':id/archive')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'instructor')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Archive a published course (PUBLISHED -> ARCHIVED)' })
+  @ApiResponse({ status: 200, description: 'Course archived' })
+  @ApiResponse({ status: 400, description: 'Course is not currently published' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - not the course owner' })
+  @ApiResponse({ status: 404, description: 'Course not found' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({ status: 500, description: 'Internal server error' })
+  archive(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string; role: string } },
+  ) {
+    return this.coursesService.archiveCourse(id, req.user);
   }
 }
 

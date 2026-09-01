@@ -31,7 +31,7 @@ export class NotificationsController {
     },
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  findAll(@Request() req) {
+  findAll(@Request() req: { user: { id: string } }) {
     return this.notificationsService.findByUser(req.user.id);
   }
 
@@ -57,7 +57,7 @@ export class NotificationsController {
   @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiResponse({ status: 200, description: 'All notifications marked as read' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  markAllAsRead(@Request() req) {
+  markAllAsRead(@Request() req: { user: { id: string } }) {
     return this.notificationsService.markAllAsRead(req.user.id);
   }
 
@@ -78,7 +78,7 @@ export class NotificationsController {
     },
   })
   @ApiResponse({ status: 201, description: 'Subscribed successfully' })
-  subscribe(@Request() req, @Body() subscription: any) {
+  subscribe(@Request() req: { user: { id: string } }, @Body() subscription: any) {
     return this.pushNotificationsService.subscribe(req.user.id, subscription);
   }
 
@@ -92,7 +92,7 @@ export class NotificationsController {
   @ApiResponse({ status: 500, description: 'Internal server error' })
   @ApiBody({ schema: { example: { endpoint: 'https://...' } } })
   @ApiResponse({ status: 200, description: 'Unsubscribed successfully' })
-  unsubscribe(@Request() req, @Body('endpoint') endpoint: string) {
+  unsubscribe(@Request() req: { user: { id: string } }, @Body('endpoint') endpoint: string) {
     return this.pushNotificationsService.unsubscribe(req.user.id, endpoint);
   }
 
@@ -115,7 +115,7 @@ export class NotificationsController {
     },
   })
   @ApiResponse({ status: 200, description: 'Preferences updated successfully' })
-  updatePreferences(@Request() req, @Body() preferences: any) {
+  updatePreferences(@Request() req: { user: { id: string } }, @Body() preferences: any) {
     return this.notificationsService.updatePreferences(req.user.id, preferences);
   }
 }
